@@ -59,8 +59,85 @@ Each game gets its own Steam entry with its own `-LaunchCode` and `-GameProcess`
 
 ### Finding the values for a game
 
-- **Launch code:** the value in your existing `--exec="launch <code>"` shortcut for that game.
+- **Launch code:** look the game up in [Launch codes](#launch-codes) below, or reuse the value from an existing `--exec="launch <code>"` shortcut.
 - **Game process:** start the game normally, open Task Manager → **Details**, and find its `.exe` name.
+
+## Launch codes
+
+Pass the code to `-LaunchCode` (just the code, e.g. `Fen`, not the whole `--exec` string). These are community-collected and Blizzard doesn't publish them, so treat the list as a starting point. Codes change when Battle.net adds or reworks games.
+
+**Status column:**
+- **Verified**: tested with this script.
+- **Multiple sources**: listed independently by two or more community sources.
+- **Single source**: listed by one source only, so try it and check the log.
+
+Last checked: 2026-09-21.
+
+### Blizzard
+
+| Game | Code | Status | Notes |
+|---|---|---|---|
+| WoW Forever | `WoWF` | Verified | |
+| World of Warcraft | `WoW` | Multiple sources | |
+| WoW Classic (all Classic versions) | `WoWC` | Multiple sources | Which Classic version starts is whatever is selected in Battle.net's game dropdown. |
+| Diablo | `D1` | Single source | Includes the Hellfire expansion. |
+| Diablo II: Resurrected | `OSI` | Single source | |
+| Diablo III | `D3` | Multiple sources | |
+| Diablo IV | `Fen` | Multiple sources | |
+| Diablo Immortal (PC) | `ANBS` | Single source | |
+| Hearthstone | `WTCG` | Multiple sources | |
+| Heroes of the Storm | `Hero` | Multiple sources | |
+| Overwatch | `Pro` | Multiple sources | Formerly listed as Overwatch 2. |
+| StarCraft | `S1` | Multiple sources | Legacy and Remastered are toggled in-game. |
+| StarCraft II | `S2` | Multiple sources | |
+| Warcraft: Orcs & Humans | `W1` | Single source | |
+| Warcraft II: Battle.net Edition | `W2` | Single source | |
+| Warcraft: Remastered | `W1R` | Single source | |
+| Warcraft II: Remastered | `W2R` | Single source | |
+| Warcraft III: Reforged | `W3` | Multiple sources | |
+| Warcraft Rumble | `GRY` | Single source | |
+| Blizzard Arcade Collection | `RTRO` | Single source | |
+
+### Activision
+
+| Game | Code | Status | Notes |
+|---|---|---|---|
+| Call of Duty / Warzone / Black Ops 7 | `AUKS` | Single source | These titles are switched inside the launcher. |
+| Call of Duty: Black Ops 4 | `VIPR` | Multiple sources | |
+| Call of Duty: Black Ops 6 | `BTLR` | Single source | Reported as a standalone entry since a July 2026 update. |
+| Call of Duty: Black Ops Cold War | `ZEUS` | Multiple sources | |
+| Call of Duty: Modern Warfare (2019) | `ODIN` | Multiple sources | |
+| Call of Duty: Modern Warfare II | `NINA` | Single source | |
+| Call of Duty: Modern Warfare III | `PNTA` | Single source | |
+| Call of Duty: MW2 Campaign Remastered | `LAZR` | Multiple sources | |
+| Call of Duty: Vanguard | `FORE` | Single source | |
+| Crash Bandicoot 4: It's About Time | `WLBY` | Single source | |
+
+### Other publishers on Battle.net
+
+| Game | Code | Status | Notes |
+|---|---|---|---|
+| Avowed | `AQUA` | Single source | |
+| DOOM: The Dark Ages | `ARIS` | Single source | |
+| The Outer Worlds 2 | `ARK` | Single source | |
+| Sea of Thieves | `SCOR` | Single source | |
+| Tony Hawk's Pro Skater 3 + 4 | `LBRA` | Single source | |
+| The Witcher 3: Wild Hunt Remastered | `LYRA` | Single source | Listed before release; may not work yet. |
+
+### Caveats
+
+- **Only WoW Forever has been tested with this script.** Every other code comes from the sources below.
+- **A code may open the game's page instead of starting the game**, depending on the game and launcher version. If so, this script will wait, log that the game process never appeared, and exit with code `2`.
+- **Not every game supports the Steam overlay.** Some Call of Duty titles have community-reported overlay problems.
+- **Process names aren't listed here.** Find each game's `-GameProcess` in Task Manager, as described above.
+
+### Sources
+
+- Steam Community guide "Run Games from Battlenet Launcher with Steam Overlay" (<https://steamcommunity.com/sharedfiles/filedetails/?id=1113049716>)
+- OriginSteamOverlayLauncher wiki, "Battle.net Launcher" (<https://github.com/WombatFromHell/OriginSteamOverlayLauncher/wiki/Battle.net-Launcher>)
+- A community gist of Battle.net Steam launch options for Linux/Proton (<https://gist.github.com/kriegalex/4a74c19f8aefd7487ef87854306be93e>)
+
+Found a new or changed code? Pull requests are welcome.
 
 ## Behavior and limitations
 
