@@ -78,7 +78,8 @@ sleep "$SETTLE_DELAY"
 # 4. Send the launch code by invoking the same command again with --exec.
 #    Battle.net is single-instance, so this should hand off to the running copy and exit.
 echo "Sending launch command"
-"$@" --exec="launch $LAUNCH_CODE"
+"$@" --exec="launch $LAUNCH_CODE" &
+disown
 
 # 5. Wait for the game process; resend once if it hasn't appeared after $RETRY_AFTER seconds.
 deadline=$(( $(date +%s) + STARTUP_WAIT ))
@@ -90,7 +91,8 @@ while [[ $(date +%s) -lt $deadline ]]; do
     [[ -n "$game_pid" ]] && break
     if [[ $retried -eq 0 && $(date +%s) -gt $retry_at ]]; then
         echo "Game not seen yet, resending launch command"
-        "$@" --exec="launch $LAUNCH_CODE"
+        "$@" --exec="launch $LAUNCH_CODE" &
+        disown
         retried=1
     fi
     sleep 1
