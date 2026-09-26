@@ -42,6 +42,37 @@ fi
 echo "Launch code: $LAUNCH_CODE | Game process: $GAME_PROCESS"
 echo "Base command: $*"
 
+# Pull the actual Proton binary and the target exe out of the base command, so the
+# launch code can be sent via a direct, lightweight "proton run" call afterwards instead
+# of re-running Steam's whole container/runtime chain a second time. Re-running the full
+# chain spins up a second, separately-sandboxed session that may not share the first
+# session'''s Wine server, so Battle.net'''s single-instance handoff never happens and the
+# second invocation just hangs or silently does nothing.
+proton_bin=""
+bnet_exe="${!#}"   # last argument in the base command is the target exe path
+for arg in "$@"; do
+    case "$arg" in
+        */proton) proton_bin="$arg" ;;
+    esac
+done
+if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
+    echo "Proton binary: $proton_bin"
+    echo "Target exe: $bnet_exe"
+else
+    echo "Could not identify the Proton binary from the base command - will fall back to resending the full command"
+fi
+
+# Args passed here (base_command_args) are only used by the fallback path.
+send_launch_code() {
+    if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
+        "$proton_bin" run "$bnet_exe" --exec="launch $LAUNCH_CODE" &
+        disown
+    else
+        "$@" --exec="launch $LAUNCH_CODE" &
+        disown
+    fi
+}
+
 # Finds the PID of the real Windows-side process (cmdline starts with "C:\..."), ignoring
 # every Linux-side wrapper process that merely mentions the same name as an argument.
 find_wine_pid() {
@@ -78,8 +109,7 @@ sleep "$SETTLE_DELAY"
 # 4. Send the launch code by invoking the same command again with --exec.
 #    Battle.net is single-instance, so this should hand off to the running copy and exit.
 echo "Sending launch command"
-"$@" --exec="launch $LAUNCH_CODE" &
-disown
+send_launch_code "$@"
 
 # 5. Wait for the game process; resend once if it hasn't appeared after $RETRY_AFTER seconds.
 deadline=$(( $(date +%s) + STARTUP_WAIT ))
@@ -91,8 +121,7 @@ while [[ $(date +%s) -lt $deadline ]]; do
     [[ -n "$game_pid" ]] && break
     if [[ $retried -eq 0 && $(date +%s) -gt $retry_at ]]; then
         echo "Game not seen yet, resending launch command"
-        "$@" --exec="launch $LAUNCH_CODE" &
-        disown
+        send_launch_code "$@"
         retried=1
     fi
     sleep 1
