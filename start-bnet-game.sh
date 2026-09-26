@@ -55,6 +55,9 @@ for arg in "$@"; do
         */proton) proton_bin="$arg" ;;
     esac
 done
+# The Wine prefix root is everything before "/drive_c/" in the target exe path.
+# Used as a last-resort way to fully end the Wine session on cleanup.
+wineprefix="${bnet_exe%%/drive_c/*}"
 if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
     echo "Proton binary: $proton_bin"
     echo "Target exe: $bnet_exe"
@@ -79,10 +82,19 @@ find_wine_pid() {
     pgrep -fa "$1" 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1; exit }'
 }
 
+# Kill every real Battle.net process (main + helpers), then force-kill anything left,
+# then as a last resort tear down the whole Wine session for this prefix - guarantees
+# Proton's wrapper (and therefore Steam's tracked launch) actually ends.
 stop_bnet() {
-    local pid
-    pid="$(find_wine_pid 'Battle\.net\.exe')"
-    [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+    local pids
+    pids="$(pgrep -fa 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    [[ -n "$pids" ]] && kill $pids 2>/dev/null
+    sleep 2
+    pids="$(pgrep -fa 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
+    if [[ -n "$wineprefix" && -d "$wineprefix" ]]; then
+        WINEPREFIX="$wineprefix" wineserver -k 2>/dev/null
+    fi
 }
 
 # 1. Clean up any leftover (real) Battle.net from a previous/crashed run.
