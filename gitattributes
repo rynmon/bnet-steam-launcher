@@ -1,0 +1,5 @@
+# Force LF line endings for the scripts regardless of platform or editor settings.
+# A CRLF-saved .sh file breaks on Linux with "bash: ...: /bin/bash^M: bad interpreter".
+*.sh  text eol=lf
+*.ps1 text eol=lf
+*.md  text eol=lf

@@ -13,6 +13,8 @@
     sends the launch command, waits for the game process, and stays alive until the game exits.
     Battle.net is closed when the game exits so Steam clears the in-game status.
 
+    A lock file prevents two overlapping runs (e.g. Play pressed twice) from racing each other.
+
     Log: %TEMP%\<script name>.log
 
 .PARAMETER LaunchCode
@@ -38,7 +40,7 @@
 
 .EXAMPLE
     # Steam launch options for WoW Forever:
-    -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\Start-BnetGame.ps1" -LaunchCode WoWF -GameProcess WowB
+    -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
 #>
 [CmdletBinding()]
 param(
@@ -51,8 +53,11 @@ param(
     [int]$StartupWait = 120
 )
 
-$logName = if ($PSCommandPath) { [IO.Path]::GetFileNameWithoutExtension($PSCommandPath) } else { "Start-BnetGame" }
+$logName = if ($PSCommandPath) { [IO.Path]::GetFileNameWithoutExtension($PSCommandPath) } else { "start-bnet-game" }
 Start-Transcript -Path (Join-Path $env:TEMP "$logName.log") -Force | Out-Null
+
+$lockFile    = Join-Path $env:TEMP "$logName.lock"
+$createdLock = $false
 
 function Resolve-BnetExe {
     param([string]$Override)
@@ -98,6 +103,18 @@ $exitCode    = 0
 $startedBnet = $false
 
 try {
+    # Single-instance guard: if another copy is already running (e.g. Play pressed twice),
+    # exit immediately rather than racing its launch/cleanup steps.
+    if (Test-Path -LiteralPath $lockFile) {
+        $existingPid = Get-Content -LiteralPath $lockFile -ErrorAction SilentlyContinue
+        if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
+            Write-Output "Another instance (PID $existingPid) is already running - exiting"
+            exit 1
+        }
+    }
+    $PID | Out-File -FilePath $lockFile -Encoding ascii -Force
+    $createdLock = $true
+
     # Checked here rather than with [Parameter(Mandatory)]: in a hidden window a missing mandatory
     # parameter would wait at an invisible prompt forever, leaving Steam stuck on "In-game".
     if (-not $LaunchCode -or -not $GameProcess) {
@@ -154,8 +171,14 @@ catch {
     $exitCode = 1
 }
 finally {
-    # 5. Close Battle.net, otherwise Steam keeps showing you as in-game.
+    # Runs on any exit this script controls - normal completion or a caught error. It does
+    # NOT run if Steam/Windows force-kills the process outright (e.g. Task Manager "End
+    # task", or a hard stop that doesn't let PowerShell run cleanup) - there's no reliable
+    # signal-trap equivalent on Windows for that case, so it's a known gap, not a bug.
     if ($startedBnet) { Stop-Bnet }
+    if ($createdLock -and (Test-Path -LiteralPath $lockFile)) {
+        Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
+    }
     Stop-Transcript | Out-Null
 }
 

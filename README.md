@@ -20,7 +20,7 @@ Adding `Battle.net.exe --exec="launch WoWF"` as a non-Steam shortcut doesn't wor
 4. Stays alive until the game exits, so Steam keeps the in-game status.
 5. Closes Battle.net so Steam clears the status.
 
-Two implementations do this: `Start-BnetGame.ps1` (Windows, PowerShell) and `start-bnet-game.sh` (SteamOS/Linux, Bash + Proton). Pick the one for your platform below.
+Two implementations do this: `start-bnet-game.ps1` (Windows, PowerShell) and `start-bnet-game.sh` (SteamOS/Linux, Bash + Proton) - same name, different extension. Pick the one for your platform below.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ Two implementations do this: `Start-BnetGame.ps1` (Windows, PowerShell) and `sta
 
 ## Setup on Windows
 
-1. Save `Start-BnetGame.ps1` somewhere permanent, e.g. `C:\Scripts\Start-BnetGame.ps1`.
+1. Save `start-bnet-game.ps1` somewhere permanent, e.g. `C:\Scripts\start-bnet-game.ps1`.
 2. In Steam: **Games → Add a Non-Steam Game to My Library → Browse**, set the file filter to **All files**, and add PowerShell:
 
    ```
@@ -45,7 +45,7 @@ Two implementations do this: `Start-BnetGame.ps1` (Windows, PowerShell) and `sta
    - Set **Launch Options** to the following. For WoW Forever:
 
      ```
-     -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\Start-BnetGame.ps1" -LaunchCode WoWF -GameProcess WowB
+     -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
      ```
 4. Set your controller layout in the same Properties window if you use one.
 5. Optional: remove Battle.net from your Windows startup items. It isn't required, since the script restarts Battle.net anyway, but it's redundant.
@@ -64,7 +64,7 @@ Each game gets its own Steam entry with its own `-LaunchCode` and `-GameProcess`
 | `-RetryAfter` | `30` | Resend the launch command once if the game hasn't appeared after this many seconds. |
 | `-StartupWait` | `120` | Give up if the game process hasn't appeared after this many seconds. |
 
-Log: `%TEMP%\Start-BnetGame.log` (overwritten each run).
+Log: `%TEMP%\start-bnet-game.log`. Lock file (prevents two overlapping runs): `%TEMP%\start-bnet-game.lock`. Both are cleaned up automatically on exit.
 
 ---
 
@@ -111,7 +111,7 @@ Start the game normally (manually, from inside Battle.net), then:
 | `BNET_RETRY_AFTER` | `30` | Resend the launch code once if the game hasn't appeared after this many seconds. |
 | `BNET_STARTUP_WAIT` | `120` | Give up if the game process hasn't appeared after this many seconds. |
 
-Log: `$XDG_RUNTIME_DIR/start-bnet-game.log`, usually `/run/user/1000/start-bnet-game.log`.
+Log: `$XDG_RUNTIME_DIR/start-bnet-game.log`, usually `/run/user/1000/start-bnet-game.log`. Lock file (prevents two overlapping runs): `start-bnet-game.lock` in the same directory. Both are cleaned up automatically on exit, including if Steam's Stop button kills the script mid-run.
 
 ---
 
@@ -200,6 +200,8 @@ Found a new or changed code? Pull requests are welcome.
 - **On SteamOS specifically, sending the launch code avoids re-running Steam's whole container/Proton chain.** Doing that a second time can spin up a separately-sandboxed session that doesn't share the first one's Wine server, so Battle.net's single-instance handoff silently fails or hangs. Instead, the script extracts the actual Proton binary from the base command and calls `proton run <exe> --exec=...` directly, which stays in the same session and doesn't wait for exit.
 - **Cleanup on SteamOS is deliberately aggressive:** every matching Battle.net process is killed, then force-killed if still alive after a couple seconds, then as a last resort the entire Wine prefix's session is torn down (`wineserver -k`) so Steam is guaranteed to see the launch end.
 - **Game updates:** if the game needs patching, the launch command may not start it. Launch it normally from Battle.net once to update, then use Steam again.
+- **Cleanup runs on (almost) any exit, not just the happy path.** On SteamOS, a `trap` on the script catches normal completion, errors, and termination signals (including the one Steam's Stop button sends), so Battle.net gets closed and the lock file removed even if the script is interrupted mid-run. On Windows, the equivalent is a `finally` block, which covers normal completion and caught errors but can't catch a hard kill (e.g. Task Manager "End task") - there's no real signal-trap equivalent for that case on Windows, so it's a known gap rather than something this script can close.
+- **A lock file stops two overlapping runs from racing each other.** If Play is pressed twice in quick succession, the second invocation checks for a live process from the first and exits immediately instead of both copies trying to start/stop Battle.net at the same time. A lock left behind by a process that's no longer running is treated as stale and ignored.
 - **Windows and SteamOS only.**
 
 ## Troubleshooting

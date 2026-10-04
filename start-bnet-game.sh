@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# start-bnet-game.sh - Steam Deck / SteamOS / Linux + Proton equivalent of Start-BnetGame.ps1
+# start-bnet-game.sh - Steam Deck / SteamOS / Linux + Proton equivalent of start-bnet-game.ps1
 #
 # Add Battle.net.exe as a non-Steam game, force a Proton compatibility tool, then set
 # Launch Options to:
@@ -10,7 +10,9 @@
 # sends the launch code, waits for the game process, and stays alive until the game exits
 # so Steam keeps the in-game status.
 #
-# Log: $XDG_RUNTIME_DIR/start-bnet-game.log (usually /run/user/1000/...), or /tmp if unset.
+# Log:  $XDG_RUNTIME_DIR/start-bnet-game.log (usually /run/user/1000/...), or /tmp if unset.
+# Lock: $XDG_RUNTIME_DIR/start-bnet-game.lock - prevents two overlapping runs (e.g. Play
+#       pressed twice) from racing each other's cleanup.
 #
 # IMPORTANT: every process in Steam's own launch chain (reaper, steam-launch-wrapper,
 # proton, this script itself) has "Battle.net.exe" somewhere in ITS OWN command line too,
@@ -27,16 +29,32 @@ SETTLE_DELAY="${BNET_SETTLE_DELAY:-8}"   # extra seconds after Battle.net appear
 RETRY_AFTER="${BNET_RETRY_AFTER:-30}"    # resend the launch code once if the game hasn't appeared after this many seconds
 STARTUP_WAIT="${BNET_STARTUP_WAIT:-120}" # give up if the game process hasn't appeared after this many seconds
 
-LOG="${XDG_RUNTIME_DIR:-/tmp}/start-bnet-game.log"
+RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+LOG="$RUN_DIR/start-bnet-game.log"
+LOCK="$RUN_DIR/start-bnet-game.lock"
 exec > "$LOG" 2>&1
 echo "=== $(date) ==="
 
+# --- Single-instance guard -------------------------------------------------
+# If another copy of this script is already running (e.g. Play pressed twice),
+# exit immediately rather than racing its launch/cleanup steps.
+if [[ -f "$LOCK" ]]; then
+    old_pid="$(cat "$LOCK" 2>/dev/null)"
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+        echo "Another instance (PID $old_pid) is already running - exiting"
+        exit 1
+    fi
+fi
+echo $$ > "$LOCK"
+
 if [[ -z "$LAUNCH_CODE" || -z "$GAME_PROCESS" ]]; then
     echo "ERROR: set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options"
+    rm -f "$LOCK"
     exit 1
 fi
 if [[ $# -eq 0 ]]; then
     echo "ERROR: no command received - Launch Options must end with %command%"
+    rm -f "$LOCK"
     exit 1
 fi
 echo "Launch code: $LAUNCH_CODE | Game process: $GAME_PROCESS"
@@ -46,7 +64,7 @@ echo "Base command: $*"
 # launch code can be sent via a direct, lightweight "proton run" call afterwards instead
 # of re-running Steam's whole container/runtime chain a second time. Re-running the full
 # chain spins up a second, separately-sandboxed session that may not share the first
-# session'''s Wine server, so Battle.net'''s single-instance handoff never happens and the
+# session's Wine server, so Battle.net's single-instance handoff never happens and the
 # second invocation just hangs or silently does nothing.
 proton_bin=""
 bnet_exe="${!#}"   # last argument in the base command is the target exe path
@@ -65,7 +83,7 @@ else
     echo "Could not identify the Proton binary from the base command - will fall back to resending the full command"
 fi
 
-# Args passed here (base_command_args) are only used by the fallback path.
+# Args passed here are only used by the fallback path.
 send_launch_code() {
     if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
         "$proton_bin" run "$bnet_exe" --exec="launch $LAUNCH_CODE" &
@@ -97,6 +115,15 @@ stop_bnet() {
     fi
 }
 
+# Runs on any exit - normal completion, an error, or Steam/the user killing the script
+# (e.g. the Stop button). Without this, a non-normal exit could leave Battle.net running
+# and Steam's in-game status stuck on, the same symptom a slow/failed launch used to cause.
+cleanup() {
+    stop_bnet
+    rm -f "$LOCK" 2>/dev/null
+}
+trap cleanup EXIT INT TERM HUP
+
 # 1. Clean up any leftover (real) Battle.net from a previous/crashed run.
 stop_bnet
 sleep 2
@@ -118,8 +145,7 @@ else
 fi
 sleep "$SETTLE_DELAY"
 
-# 4. Send the launch code by invoking the same command again with --exec.
-#    Battle.net is single-instance, so this should hand off to the running copy and exit.
+# 4. Send the launch code.
 echo "Sending launch command"
 send_launch_code "$@"
 
@@ -150,8 +176,6 @@ else
     exit_code=2
 fi
 
-# 7. Close Battle.net so Steam clears the status.
-stop_bnet
+# 7. Cleanup (closing Battle.net, removing the lock) happens automatically via the EXIT trap.
 wait "$bnet_job" 2>/dev/null
-
 exit "$exit_code"
