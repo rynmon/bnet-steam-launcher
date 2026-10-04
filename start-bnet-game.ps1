@@ -88,6 +88,7 @@ function Resolve-BnetExe {
     throw "Could not find Battle.net.exe. Pass its full path with -BnetExe."
 }
 
+function Write-Log { param([string]$Message) Write-Output "[$(Get-Date -Format 'HH:mm:ss')] $Message" }
 function Get-Game    { Get-Process -Name $GameProcess -ErrorAction SilentlyContinue | Select-Object -First 1 }
 function Send-Launch { Start-Process -FilePath $BnetExe -ArgumentList "--exec=`"launch $LaunchCode`"" }
 function Stop-Bnet {
@@ -108,7 +109,7 @@ try {
     if (Test-Path -LiteralPath $lockFile) {
         $existingPid = Get-Content -LiteralPath $lockFile -ErrorAction SilentlyContinue
         if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
-            Write-Output "Another instance (PID $existingPid) is already running - exiting"
+            Write-Log "Another instance (PID $existingPid) is already running - exiting"
             exit 1
         }
     }
@@ -123,51 +124,57 @@ try {
     $GameProcess = $GameProcess -replace '\.exe$', ''
 
     $BnetExe = Resolve-BnetExe -Override $BnetExe
-    Write-Output "Battle.net: $BnetExe"
-    Write-Output "Launch code: $LaunchCode | Game process: $GameProcess"
+    Write-Log "Battle.net: $BnetExe"
+    Write-Log "Launch code: $LaunchCode | Game process: $GameProcess"
 
-    # 1. Restart Battle.net from this script so the game becomes a child of the Steam launch.
-    Stop-Bnet
-    Start-Process -FilePath $BnetExe
-    $startedBnet = $true
+    # 0. If the game is already running (started manually, or Play pressed again by mistake),
+    #    don't touch Battle.net at all - just pick up tracking the existing session.
+    $game = Get-Game
+    if ($game) {
+        Write-Log "Game process '$GameProcess' already running (PID $($game.Id)) - skipping Battle.net restart"
+    } else {
+        # 1. Restart Battle.net from this script so the game becomes a child of the Steam launch.
+        Stop-Bnet
+        Start-Process -FilePath $BnetExe
+        $startedBnet = $true
 
-    # 2. Wait for the Battle.net window (up to $BnetMaxWait), then a short settle delay.
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    while ($sw.Elapsed.TotalSeconds -lt $BnetMaxWait -and -not (Test-BnetWindow)) {
-        Start-Sleep -Milliseconds 500
-    }
-    if (Test-BnetWindow) { Write-Output ("Battle.net window up after {0:N1}s" -f $sw.Elapsed.TotalSeconds) }
-    else                 { Write-Output "No Battle.net window seen after $BnetMaxWait s, continuing anyway" }
-    Start-Sleep -Seconds $SettleDelay
+        # 2. Wait for the Battle.net window (up to $BnetMaxWait), then a short settle delay.
+        $sw = [Diagnostics.Stopwatch]::StartNew()
+        while ($sw.Elapsed.TotalSeconds -lt $BnetMaxWait -and -not (Test-BnetWindow)) {
+            Start-Sleep -Milliseconds 500
+        }
+        if (Test-BnetWindow) { Write-Log ("Battle.net window up after {0:N1}s" -f $sw.Elapsed.TotalSeconds) }
+        else                 { Write-Log "No Battle.net window seen after $BnetMaxWait s, continuing anyway" }
+        Start-Sleep -Seconds $SettleDelay
 
-    # 3. Send the launch command; resend once if the game hasn't appeared after $RetryAfter seconds.
-    Send-Launch
-    $deadline = (Get-Date).AddSeconds($StartupWait)
-    $retryAt  = (Get-Date).AddSeconds($RetryAfter)
-    $retried  = $false
-    $game     = $null
-    while (-not $game -and (Get-Date) -lt $deadline) {
-        Start-Sleep -Seconds 1
-        $game = Get-Game
-        if (-not $game -and -not $retried -and (Get-Date) -gt $retryAt) {
-            Write-Output "Game not seen yet, resending launch command"
-            Send-Launch
-            $retried = $true
+        # 3. Send the launch command; resend once if the game hasn't appeared after $RetryAfter seconds.
+        Send-Launch
+        $deadline = (Get-Date).AddSeconds($StartupWait)
+        $retryAt  = (Get-Date).AddSeconds($RetryAfter)
+        $retried  = $false
+        while (-not $game -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Seconds 1
+            $game = Get-Game
+            if (-not $game -and -not $retried -and (Get-Date) -gt $retryAt) {
+                Write-Log "Game not seen yet, resending launch command"
+                Send-Launch
+                $retried = $true
+            }
         }
     }
 
     # 4. Stay alive until the game closes so Steam keeps the in-game status.
     if ($game) {
-        Write-Output "Game running (PID $($game.Id)), waiting for exit"
+        Write-Log "Game running (PID $($game.Id)), waiting for exit"
         $game.WaitForExit()
-        Write-Output "Game exited"
+        Write-Log "Game exited"
     } else {
-        Write-Output "Game process '$GameProcess' never appeared within $StartupWait s - check -GameProcess / -LaunchCode"
+        Write-Log "Game process '$GameProcess' never appeared within $StartupWait s - check -GameProcess / -LaunchCode"
         $exitCode = 2
     }
 }
 catch {
-    Write-Output "ERROR: $($_.Exception.Message)"
+    Write-Log "ERROR: $($_.Exception.Message)"
     $exitCode = 1
 }
 finally {

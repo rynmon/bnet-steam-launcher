@@ -33,7 +33,8 @@ RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}"
 LOG="$RUN_DIR/start-bnet-game.log"
 LOCK="$RUN_DIR/start-bnet-game.lock"
 exec > "$LOG" 2>&1
-echo "=== $(date) ==="
+log() { echo "[$(date +%T)] $*"; }
+log "=== run started $(date) ==="
 
 # --- Single-instance guard -------------------------------------------------
 # If another copy of this script is already running (e.g. Play pressed twice),
@@ -41,24 +42,24 @@ echo "=== $(date) ==="
 if [[ -f "$LOCK" ]]; then
     old_pid="$(cat "$LOCK" 2>/dev/null)"
     if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-        echo "Another instance (PID $old_pid) is already running - exiting"
+        log "Another instance (PID $old_pid) is already running - exiting"
         exit 1
     fi
 fi
 echo $$ > "$LOCK"
 
 if [[ -z "$LAUNCH_CODE" || -z "$GAME_PROCESS" ]]; then
-    echo "ERROR: set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options"
+    log "ERROR: set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options"
     rm -f "$LOCK"
     exit 1
 fi
 if [[ $# -eq 0 ]]; then
-    echo "ERROR: no command received - Launch Options must end with %command%"
+    log "ERROR: no command received - Launch Options must end with %command%"
     rm -f "$LOCK"
     exit 1
 fi
-echo "Launch code: $LAUNCH_CODE | Game process: $GAME_PROCESS"
-echo "Base command: $*"
+log "Launch code: $LAUNCH_CODE | Game process: $GAME_PROCESS"
+log "Base command: $*"
 
 # Pull the actual Proton binary and the target exe out of the base command, so the
 # launch code can be sent via a direct, lightweight "proton run" call afterwards instead
@@ -77,10 +78,10 @@ done
 # Used as a last-resort way to fully end the Wine session on cleanup.
 wineprefix="${bnet_exe%%/drive_c/*}"
 if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
-    echo "Proton binary: $proton_bin"
-    echo "Target exe: $bnet_exe"
+    log "Proton binary: $proton_bin"
+    log "Target exe: $bnet_exe"
 else
-    echo "Could not identify the Proton binary from the base command - will fall back to resending the full command"
+    log "Could not identify the Proton binary from the base command - will fall back to resending the full command"
 fi
 
 # Args passed here are only used by the fallback path.
@@ -97,7 +98,7 @@ send_launch_code() {
 # Finds the PID of the real Windows-side process (cmdline starts with "C:\..."), ignoring
 # every Linux-side wrapper process that merely mentions the same name as an argument.
 find_wine_pid() {
-    pgrep -fa "$1" 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1; exit }'
+    pgrep -fia "$1" 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1; exit }'
 }
 
 # Kill every real Battle.net process (main + helpers), then force-kill anything left,
@@ -105,10 +106,10 @@ find_wine_pid() {
 # Proton's wrapper (and therefore Steam's tracked launch) actually ends.
 stop_bnet() {
     local pids
-    pids="$(pgrep -fa 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    pids="$(pgrep -fia 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
     [[ -n "$pids" ]] && kill $pids 2>/dev/null
     sleep 2
-    pids="$(pgrep -fa 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    pids="$(pgrep -fia 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
     [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
     if [[ -n "$wineprefix" && -d "$wineprefix" ]]; then
         WINEPREFIX="$wineprefix" wineserver -k 2>/dev/null
@@ -124,58 +125,64 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
-# 1. Clean up any leftover (real) Battle.net from a previous/crashed run.
-stop_bnet
-sleep 2
-
-# 2. Start Battle.net via the exact command Steam/Proton built for this entry.
-"$@" &
-bnet_job=$!
-
-# 3. Wait for the real Battle.net process (not the wrapper chain) to appear, then settle.
-deadline=$(( $(date +%s) + BNET_WAIT ))
-while [[ $(date +%s) -lt $deadline ]]; do
-    [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]] && break
-    sleep 0.5
-done
-if [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]]; then
-    echo "Battle.net process seen"
+# 0. If the game is already running (started manually, or Play pressed again by mistake),
+#    don't touch Battle.net at all - just pick up tracking the existing session.
+game_pid="$(find_wine_pid "$GAME_PROCESS")"
+if [[ -n "$game_pid" ]]; then
+    log "Game process '$GAME_PROCESS' already running (PID $game_pid) - skipping Battle.net restart"
 else
-    echo "No Battle.net process seen after ${BNET_WAIT}s, continuing anyway"
-fi
-sleep "$SETTLE_DELAY"
+    # 1. Clean up any leftover (real) Battle.net from a previous/crashed run.
+    stop_bnet
+    sleep 2
 
-# 4. Send the launch code.
-echo "Sending launch command"
-send_launch_code "$@"
+    # 2. Start Battle.net via the exact command Steam/Proton built for this entry.
+    "$@" &
+    bnet_job=$!
 
-# 5. Wait for the game process; resend once if it hasn't appeared after $RETRY_AFTER seconds.
-deadline=$(( $(date +%s) + STARTUP_WAIT ))
-retry_at=$(( $(date +%s) + RETRY_AFTER ))
-retried=0
-game_pid=""
-while [[ $(date +%s) -lt $deadline ]]; do
-    game_pid="$(find_wine_pid "$GAME_PROCESS")"
-    [[ -n "$game_pid" ]] && break
-    if [[ $retried -eq 0 && $(date +%s) -gt $retry_at ]]; then
-        echo "Game not seen yet, resending launch command"
-        send_launch_code "$@"
-        retried=1
+    # 3. Wait for the real Battle.net process (not the wrapper chain) to appear, then settle.
+    deadline=$(( $(date +%s) + BNET_WAIT ))
+    while [[ $(date +%s) -lt $deadline ]]; do
+        [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]] && break
+        sleep 0.5
+    done
+    if [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]]; then
+        log "Battle.net process seen"
+    else
+        log "No Battle.net process seen after ${BNET_WAIT}s, continuing anyway"
     fi
-    sleep 1
-done
+    sleep "$SETTLE_DELAY"
+
+    # 4. Send the launch code.
+    log "Sending launch command"
+    send_launch_code "$@"
+
+    # 5. Wait for the game process; resend once if it hasn't appeared after $RETRY_AFTER seconds.
+    deadline=$(( $(date +%s) + STARTUP_WAIT ))
+    retry_at=$(( $(date +%s) + RETRY_AFTER ))
+    retried=0
+    while [[ $(date +%s) -lt $deadline ]]; do
+        game_pid="$(find_wine_pid "$GAME_PROCESS")"
+        [[ -n "$game_pid" ]] && break
+        if [[ $retried -eq 0 && $(date +%s) -gt $retry_at ]]; then
+            log "Game not seen yet, resending launch command"
+            send_launch_code "$@"
+            retried=1
+        fi
+        sleep 1
+    done
+fi
 
 # 6. Stay alive until the game exits, so Steam keeps the in-game status.
 if [[ -n "$game_pid" ]]; then
-    echo "Game running (PID $game_pid), waiting for exit"
+    log "Game running (PID $game_pid), waiting for exit"
     while kill -0 "$game_pid" 2>/dev/null; do sleep 2; done
-    echo "Game exited"
+    log "Game exited"
     exit_code=0
 else
-    echo "Game process '$GAME_PROCESS' never appeared within ${STARTUP_WAIT}s"
+    log "Game process '$GAME_PROCESS' never appeared within ${STARTUP_WAIT}s"
     exit_code=2
 fi
 
 # 7. Cleanup (closing Battle.net, removing the lock) happens automatically via the EXIT trap.
-wait "$bnet_job" 2>/dev/null
+[[ -n "${bnet_job:-}" ]] && wait "$bnet_job" 2>/dev/null
 exit "$exit_code"
