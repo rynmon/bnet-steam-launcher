@@ -31,7 +31,7 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
    ```
    C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
    ```
-   (Don't add the `.ps1` directly — Steam can't run it.)
+   (Don't add the `.ps1` directly, Steam can't run it.)
 3. Right-click the entry → **Properties** → rename it, then set **Launch Options**:
    ```
    -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
