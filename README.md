@@ -1,5 +1,10 @@
 # bnet-steam-launcher
 
+![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20SteamOS-lightgrey.svg)
+![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
+![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)
+
 Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
 Works on **Windows** (PowerShell) and **SteamOS** — Steam Deck and Steam Machine (Bash + Proton). Tested on all three.
