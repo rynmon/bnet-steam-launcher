@@ -1,0 +1,16 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*~
+*.bak
+
+# Script runtime artifacts - these normally live in %TEMP% / $XDG_RUNTIME_DIR, not the
+# repo, but are ignored here too in case a copy gets run or tested from this folder.
+*.log
+*.lock
