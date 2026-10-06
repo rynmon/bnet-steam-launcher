@@ -49,7 +49,7 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
 | `-GameProcess` | required | Game process name (Task Manager → Details), with or without `.exe`. |
 | `-BnetExe` | auto-detect | Path to `Battle.net.exe`, if auto-detection fails. |
 | `-BnetMaxWait` / `-SettleDelay` | `20` / `3` | Seconds waiting for Battle.net's window, then settling, before sending the launch code. |
-| `-RetryAfter` / `-StartupWait` | `30` / `120` | When to resend the launch code, and when to give up. |
+| `-RetryAfter` / `-StartupWait` | `10` / `120` | How often to resend the launch code (repeats, not a one-off) until it works or this many seconds pass. |
 
 Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
 
@@ -82,7 +82,7 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
 | `BNET_LAUNCH_CODE` | required | Same as `-LaunchCode` above. |
 | `BNET_GAME_PROCESS` | required | Same as `-GameProcess` above — find via `pgrep -fa <name>` while the game runs; look for the `C:\...` path. |
 | `BNET_MAX_WAIT` / `BNET_SETTLE_DELAY` | `30` / `8` | Same idea as the Windows waits. |
-| `BNET_RETRY_AFTER` / `BNET_STARTUP_WAIT` | `30` / `120` | Same idea as the Windows waits. |
+| `BNET_RETRY_AFTER` / `BNET_STARTUP_WAIT` | `10` / `120` | Same idea as the Windows waits. |
 
 Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1000/`), cleaned up automatically — including if Steam's Stop button kills the script mid-run.
 
@@ -95,6 +95,7 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 - Cleanup runs on virtually any exit (normal, error, or signal) on SteamOS via a trap; on Windows it's a `finally` block, which can't catch a hard kill (e.g. Task Manager "End task") — a known, unfixable gap.
 - A lock file stops two overlapping launches (e.g. double-pressing Play) from racing each other.
 - If the game process is already running when the script starts (launched manually, or Play pressed while already in-game), Battle.net is left alone entirely — the script just waits on the existing process instead of restarting anything.
+- The launch code is resent repeatedly (every `RetryAfter` seconds) until the game appears, not just once — a silently-ignored first attempt used to mean waiting out the full `StartupWait` timeout doing nothing; now it just costs one retry interval.
 - Log lines are timestamped, so a slow step and a stuck one look different even without watching it live.
 
 ## Launch codes
