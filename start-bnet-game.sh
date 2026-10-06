@@ -26,7 +26,7 @@ LAUNCH_CODE="${BNET_LAUNCH_CODE:-}"
 GAME_PROCESS="${BNET_GAME_PROCESS:-}"
 BNET_WAIT="${BNET_MAX_WAIT:-30}"         # seconds to wait for the real Battle.net process before sending the launch code anyway
 SETTLE_DELAY="${BNET_SETTLE_DELAY:-8}"   # extra seconds after Battle.net appears (raise if the launch code gets ignored)
-RETRY_AFTER="${BNET_RETRY_AFTER:-30}"    # resend the launch code once if the game hasn't appeared after this many seconds
+RETRY_AFTER="${BNET_RETRY_AFTER:-10}"    # resend the launch code every N seconds until the game appears (not just once)
 STARTUP_WAIT="${BNET_STARTUP_WAIT:-120}" # give up if the game process hasn't appeared after this many seconds
 
 RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}"
@@ -156,17 +156,19 @@ else
     log "Sending launch command"
     send_launch_code "$@"
 
-    # 5. Wait for the game process; resend once if it hasn't appeared after $RETRY_AFTER seconds.
+    # 5. Wait for the game process; resend the launch code every $RETRY_AFTER seconds until
+    #    it appears or $STARTUP_WAIT runs out, rather than giving up after a single resend.
+    #    A silently-ignored first attempt now costs one retry interval, not the full timeout.
     deadline=$(( $(date +%s) + STARTUP_WAIT ))
-    retry_at=$(( $(date +%s) + RETRY_AFTER ))
-    retried=0
+    next_retry=$(( $(date +%s) + RETRY_AFTER ))
     while [[ $(date +%s) -lt $deadline ]]; do
         game_pid="$(find_wine_pid "$GAME_PROCESS")"
         [[ -n "$game_pid" ]] && break
-        if [[ $retried -eq 0 && $(date +%s) -gt $retry_at ]]; then
+        now=$(date +%s)
+        if [[ $now -ge $next_retry ]]; then
             log "Game not seen yet, resending launch command"
             send_launch_code "$@"
-            retried=1
+            next_retry=$(( now + RETRY_AFTER ))
         fi
         sleep 1
     done
@@ -175,7 +177,7 @@ fi
 # 6. Stay alive until the game exits, so Steam keeps the in-game status.
 if [[ -n "$game_pid" ]]; then
     log "Game running (PID $game_pid), waiting for exit"
-    while kill -0 "$game_pid" 2>/dev/null; do sleep 2; done
+    while kill -0 "$game_pid" 2>/dev/null; do sleep 1; done
     log "Game exited"
     exit_code=0
 else

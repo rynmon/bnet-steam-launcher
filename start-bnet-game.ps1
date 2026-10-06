@@ -33,7 +33,7 @@
     Extra seconds to wait after the Battle.net window appears. Raise if the first launch command is ignored.
 
 .PARAMETER RetryAfter
-    Resend the launch command once if the game hasn't appeared after this many seconds.
+    Resend the launch command every this-many seconds until the game appears (not just once).
 
 .PARAMETER StartupWait
     Give up if the game process hasn't appeared after this many seconds.
@@ -49,7 +49,7 @@ param(
     [string]$BnetExe,
     [int]$BnetMaxWait = 20,
     [int]$SettleDelay = 3,
-    [int]$RetryAfter  = 30,
+    [int]$RetryAfter  = 10,
     [int]$StartupWait = 120
 )
 
@@ -147,18 +147,19 @@ try {
         else                 { Write-Log "No Battle.net window seen after $BnetMaxWait s, continuing anyway" }
         Start-Sleep -Seconds $SettleDelay
 
-        # 3. Send the launch command; resend once if the game hasn't appeared after $RetryAfter seconds.
+        # 3. Send the launch command; resend every $RetryAfter seconds until the game appears
+        #    or $StartupWait runs out, rather than giving up after a single resend. A
+        #    silently-ignored first attempt now costs one retry interval, not the full timeout.
         Send-Launch
-        $deadline = (Get-Date).AddSeconds($StartupWait)
-        $retryAt  = (Get-Date).AddSeconds($RetryAfter)
-        $retried  = $false
+        $deadline  = (Get-Date).AddSeconds($StartupWait)
+        $nextRetry = (Get-Date).AddSeconds($RetryAfter)
         while (-not $game -and (Get-Date) -lt $deadline) {
             Start-Sleep -Seconds 1
             $game = Get-Game
-            if (-not $game -and -not $retried -and (Get-Date) -gt $retryAt) {
+            if (-not $game -and (Get-Date) -ge $nextRetry) {
                 Write-Log "Game not seen yet, resending launch command"
                 Send-Launch
-                $retried = $true
+                $nextRetry = (Get-Date).AddSeconds($RetryAfter)
             }
         }
     }
