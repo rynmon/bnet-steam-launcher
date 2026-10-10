@@ -1,6 +1,7 @@
 # bnet-steam-launcher
 
-![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+[![License](https://img.shields.io/github/license/rynmon/bnet-steam-launcher)](https://github.com/rynmon/bnet-steam-launcher/blob/main/LICENSE)
+[![Downloads](https://img.shields.io/github/downloads/rynmon/bnet-steam-launcher/total)](https://github.com/rynmon/bnet-steam-launcher/releases)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20SteamOS-lightgrey.svg)
 ![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
 ![Steam Deck](https://img.shields.io/badge/Steam%20Deck-supported-1b2838?logo=steamdeck&logoColor=white)
