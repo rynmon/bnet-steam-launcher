@@ -3,6 +3,8 @@
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20SteamOS-lightgrey.svg)
 ![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
+![Steam Deck](https://img.shields.io/badge/Steam%20Deck-supported-1b2838?logo=steamdeck&logoColor=white)
+![Steam Machine](https://img.shields.io/badge/Steam%20Machine-supported-1b2838?logo=steam&logoColor=white)
 
 Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
@@ -76,6 +78,7 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
    ```
    **Don't combine `~` with quotes** — `"~/Steam Tools/start-bnet-game.sh"` won't expand `~`, since quoting disables that expansion in the shell. Use a full path (as above) or `$HOME`, which does expand inside quotes: `"$HOME/Steam Tools/start-bnet-game.sh"`.
 5. Set a real gamepad layout under Properties → Controller — non-Steam shortcuts don't get one by default, and Steam Input won't work without it.
+6. **In Battle.net's own settings, enable "Exit Battle.net after launching a game."** Without this, Battle.net's window stays open and keeps the controller/Steam Input focus alongside the game — stick movement and buttons can end up driving Battle.net's UI in the background while you play (e.g. a jump button opening a Battle.net menu). Having Battle.net close itself once it hands off to the game fixes this. Harmless side effect: the script's own Battle.net cleanup on exit becomes a no-op, since it's usually already closed by then.
 
 | Variable | Default | Description |
 |---|---|---|
@@ -182,6 +185,7 @@ Found a new or changed code? Pull requests are welcome.
 | (SteamOS) Removing the shortcut wiped the install | Retarget existing shortcuts, never remove once installed. |
 | (SteamOS) Nothing launches despite a correct-looking Target | Target and Start In both need quotes. |
 | (SteamOS) Steam Input doesn't work | Set a gamepad layout under Properties → Controller. |
+| (SteamOS) Controller input also navigates Battle.net's UI in the background while playing | Enable "Exit Battle.net after launching a game" in Battle.net's own settings (see Setup step 6). |
 | (SteamOS) Battle.net/status doesn't clear on exit | Confirm `wineserver` is on `PATH` — the last-resort cleanup step needs it. |
 | (SteamOS) "Could not identify the Proton binary" | Confirm Launch Options still end in `%command%` and weren't edited. |
 
