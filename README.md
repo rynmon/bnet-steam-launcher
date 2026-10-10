@@ -2,10 +2,10 @@
 
 [![License](https://img.shields.io/github/license/rynmon/bnet-steam-launcher)](https://github.com/rynmon/bnet-steam-launcher/blob/main/LICENSE)
 [![Downloads](https://img.shields.io/github/downloads/rynmon/bnet-steam-launcher/total)](https://github.com/rynmon/bnet-steam-launcher/releases)
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20SteamOS-lightgrey.svg)
-![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
+![Windows](https://img.shields.io/badge/Windows-supported-0078D6?logo=windows&logoColor=white)
 ![Steam Deck](https://img.shields.io/badge/Steam%20Deck-supported-1b2838?logo=steamdeck&logoColor=white)
 ![Steam Machine](https://img.shields.io/badge/Steam%20Machine-supported-1b2838?logo=steam&logoColor=white)
+![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
 
 Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
