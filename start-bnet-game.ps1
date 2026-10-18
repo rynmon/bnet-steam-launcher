@@ -15,7 +15,7 @@
 
     A lock file prevents two overlapping runs (e.g. Play pressed twice) from racing each other.
 
-    Log: %TEMP%\<script name>.log
+    Log: %TEMP%\<script name>.log (the previous run is kept as <script name>.prev.log)
 
 .PARAMETER LaunchCode
     REQUIRED. Game code used in Battle.net's --exec="launch <code>" (e.g. WoWF for WoW Forever).
@@ -65,11 +65,31 @@ param(
 )
 
 $logName = if ($PSCommandPath) { [IO.Path]::GetFileNameWithoutExtension($PSCommandPath) } else { "start-bnet-game" }
-$logPath = Join-Path $env:TEMP "$logName.log"
-Start-Transcript -Path $logPath -Force | Out-Null
-
+$logPath     = Join-Path $env:TEMP "$logName.log"
+$prevLogPath = Join-Path $env:TEMP "$logName.prev.log"
 $lockFile    = Join-Path $env:TEMP "$logName.lock"
 $createdLock = $false
+
+# Single-instance guard: if another copy is already running (e.g. Play pressed twice), exit
+# immediately rather than racing its launch/cleanup steps. Checked before the log is touched, so
+# the second run can't rotate away the log the first one is still writing. The PID must also
+# still be PowerShell: a lock left behind by a hard-killed run can name a PID Windows has since
+# reused for something unrelated, which would otherwise block every launch.
+if (Test-Path -LiteralPath $lockFile) {
+    $existingPid = Get-Content -LiteralPath $lockFile -ErrorAction SilentlyContinue | Select-Object -First 1
+    $existing    = if ($existingPid -as [int]) { Get-Process -Id $existingPid -ErrorAction SilentlyContinue }
+    if ($existing -and $existing.ProcessName -in 'powershell', 'pwsh') {
+        "[$(Get-Date -Format 'HH:mm:ss')] Another instance (PID $existingPid) is already running - exiting" |
+            Add-Content -LiteralPath $logPath -ErrorAction SilentlyContinue
+        exit 1
+    }
+}
+
+# Keep the previous run's log, so pressing Play again after a failure doesn't erase why it failed.
+if (Test-Path -LiteralPath $logPath) {
+    Move-Item -LiteralPath $logPath -Destination $prevLogPath -Force -ErrorAction SilentlyContinue
+}
+Start-Transcript -Path $logPath -Force | Out-Null
 
 function Resolve-BnetExe {
     param([string]$Override)
@@ -103,13 +123,14 @@ function Resolve-BnetExe {
 function Write-Log { param([string]$Message) Write-Output "[$(Get-Date -Format 'HH:mm:ss')] $Message" }
 function Get-Game    { Get-Process -Name $GameProcess -ErrorAction SilentlyContinue | Select-Object -First 1 }
 function Send-Launch { Start-Process -FilePath $BnetExe -ArgumentList "--exec=`"launch $LaunchCode`"" }
-function Stop-Bnet {
+function Close-Bnet {
     Get-Process -Name "Battle.net" -ErrorAction SilentlyContinue | Stop-Process -Force
     Wait-Process -Name "Battle.net" -Timeout 5 -ErrorAction SilentlyContinue
 }
 function Wait-GameReturn {
-    # Returns the game process if it reappears within $RelaunchGrace seconds, else $null.
-    $deadline = (Get-Date).AddSeconds($RelaunchGrace)
+    # Returns the game process if it reappears within $Seconds seconds, else $null.
+    param([int]$Seconds)
+    $deadline = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 500
         $g = Get-Game
@@ -119,7 +140,6 @@ function Wait-GameReturn {
 }
 function Show-ErrorPopup {
     param([string]$Message)
-    if ($NoPopup) { return }
     # WScript.Shell's Popup closes itself after the timeout, so a popup hidden behind Big Picture
     # can't leave Steam stuck on "In-game". 0x10 = error icon, 0x10000 = foreground, 0x40000 = topmost.
     try {
@@ -139,15 +159,6 @@ $failMessage = $null
 $startedBnet = $false
 
 try {
-    # Single-instance guard: if another copy is already running (e.g. Play pressed twice),
-    # exit immediately rather than racing its launch/cleanup steps.
-    if (Test-Path -LiteralPath $lockFile) {
-        $existingPid = Get-Content -LiteralPath $lockFile -ErrorAction SilentlyContinue
-        if ($existingPid -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
-            Write-Log "Another instance (PID $existingPid) is already running - exiting"
-            exit 1
-        }
-    }
     $PID | Out-File -FilePath $lockFile -Encoding ascii -Force
     $createdLock = $true
 
@@ -169,7 +180,7 @@ try {
         Write-Log "Game process '$GameProcess' already running (PID $($game.Id)) - skipping Battle.net restart"
     } else {
         # 1. Restart Battle.net from this script so the game becomes a child of the Steam launch.
-        Stop-Bnet
+        Close-Bnet
         Start-Process -FilePath $BnetExe
         $startedBnet = $true
 
@@ -207,7 +218,7 @@ try {
             Write-Log "Game running (PID $($game.Id)), waiting for exit"
             $game.WaitForExit()
             Write-Log "Game exited"
-            $game = Wait-GameReturn
+            $game = Wait-GameReturn -Seconds $RelaunchGrace
             if ($game) { Write-Log "Game came back as PID $($game.Id)" }
         }
     } else {
@@ -226,12 +237,12 @@ finally {
     # NOT run if Steam/Windows force-kills the process outright (e.g. Task Manager "End
     # task", or a hard stop that doesn't let PowerShell run cleanup) - there's no reliable
     # signal-trap equivalent on Windows for that case, so it's a known gap, not a bug.
-    if ($startedBnet) { Stop-Bnet }
+    if ($startedBnet) { Close-Bnet }
     if ($createdLock -and (Test-Path -LiteralPath $lockFile)) {
         Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
     }
     # After cleanup, so Battle.net is already closed while the popup is up.
-    if ($failMessage) { Show-ErrorPopup $failMessage }
+    if ($failMessage -and -not $NoPopup) { Show-ErrorPopup $failMessage }
     Stop-Transcript | Out-Null
 }
 

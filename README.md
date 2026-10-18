@@ -6,6 +6,7 @@
 ![Steam Deck](https://img.shields.io/badge/Steam%20Deck-supported-1b2838?logo=steamdeck&logoColor=white)
 ![Steam Machine](https://img.shields.io/badge/Steam%20Machine-supported-1b2838?logo=steam&logoColor=white)
 ![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
+[![Lint](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml/badge.svg)](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml)
 
 Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
@@ -58,7 +59,7 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
 | `-RelaunchGrace` | `10` | Seconds to keep watching after the game exits, in case it restarts itself. `0` disables. |
 | `-NoPopup` | off | Don't show the error popup when a launch fails. |
 
-Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
+Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically. The previous run's log is kept as `start-bnet-game.prev.log`.
 
 ---
 
@@ -88,13 +89,13 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
 | Variable | Default | Description |
 |---|---|---|
 | `BNET_LAUNCH_CODE` | required | Same as `-LaunchCode` above. |
-| `BNET_GAME_PROCESS` | required | Same as `-GameProcess` above — find via `pgrep -fa <name>` while the game runs; look for the `C:\...` path. |
+| `BNET_GAME_PROCESS` | required | Same as `-GameProcess` above, with or without `.exe` — find via `pgrep -fa <name>` while the game runs; look for the `C:\...` path. Matched exactly against the exe name, not as a pattern. |
 | `BNET_MAX_WAIT` / `BNET_SETTLE_DELAY` | `30` / `8` | Same idea as the Windows waits. |
 | `BNET_RETRY_AFTER` / `BNET_STARTUP_WAIT` | `10` / `120` | Same idea as the Windows waits. |
 | `BNET_RELAUNCH_GRACE` | `10` | Same as `-RelaunchGrace` above. |
 | `BNET_NOTIFY` | `1` | `0` disables the desktop notification on failure (Desktop Mode only; Game Mode doesn't show them). |
 
-Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1000/`), cleaned up automatically — including if Steam's Stop button kills the script mid-run.
+Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1000/`), cleaned up automatically — including if Steam's Stop button kills the script mid-run. The previous run's log is kept as `start-bnet-game.prev.log`.
 
 ---
 
@@ -103,8 +104,8 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 - Battle.net is force-closed on start and on exit, on both platforms — interrupts in-progress downloads, and means Battle.net isn't open for other games/chat unless you open it yourself.
 - On SteamOS, the launch code is sent via a direct `proton run` call rather than re-running Steam's whole container chain — doing the latter can spin up a separate sandboxed session that never reaches the already-running Battle.net. Cleanup there is correspondingly aggressive (kill, force-kill, then tear down the Wine session as a last resort).
 - Cleanup runs on virtually any exit (normal, error, or signal) on SteamOS via a trap; on Windows it's a `finally` block, which can't catch a hard kill (e.g. Task Manager "End task") — a known, unfixable gap.
-- A lock file stops two overlapping launches (e.g. double-pressing Play) from racing each other.
-- If the game process is already running when the script starts (launched manually, or Play pressed while already in-game), Battle.net is left alone entirely — the script just waits on the existing process instead of restarting anything.
+- A lock file stops two overlapping launches (e.g. double-pressing Play) from racing each other. The second launch exits without touching the first one's log. A lock left behind by a crash doesn't block later launches, even if its process ID has since been reused by another program.
+- If the game process is already running when the script starts (launched manually, or Play pressed while already in-game), Battle.net is left alone entirely — the script just waits on the existing process instead of restarting anything, and doesn't close Battle.net (or, on SteamOS, end the Wine session) when the game exits.
 - The launch code is resent repeatedly (every `RetryAfter` seconds) until the game appears, not just once — a silently-ignored first attempt used to mean waiting out the full `StartupWait` timeout doing nothing; now it just costs one retry interval.
 - If the game exits and comes back within `RelaunchGrace` seconds (a self-restart after a patch, or a launcher stub handing off to the real game), the script keeps waiting on the new process instead of closing Battle.net under it. The cost is that Steam's "In-game" status clears that many seconds after you quit.
 - When a launch fails (missing settings, or the game never appears), Windows shows an error popup that closes itself after 30 seconds, and SteamOS sends a desktop notification. Both point to the log. Pressing Play twice doesn't trigger one.

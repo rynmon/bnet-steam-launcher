@@ -11,13 +11,14 @@
 # so Steam keeps the in-game status.
 #
 # Log:  $XDG_RUNTIME_DIR/start-bnet-game.log (usually /run/user/1000/...), or /tmp if unset.
+#       The previous run is kept as start-bnet-game.prev.log.
 # Lock: $XDG_RUNTIME_DIR/start-bnet-game.lock - prevents two overlapping runs (e.g. Play
 #       pressed twice) from racing each other's cleanup.
 #
 # IMPORTANT: every process in Steam's own launch chain (reaper, steam-launch-wrapper,
 # proton, this script itself) has "Battle.net.exe" somewhere in ITS OWN command line too,
 # since that path is just passed along as an argument. A plain `pgrep -f Battle.net.exe`
-# matches all of those, including this script. Only the real Windows-side process (running
+# would match all of those, including this script. Only the real Windows-side process (running
 # under Wine) reports a "C:\..." path, so that's what every check here filters for.
 
 set -u
@@ -34,8 +35,27 @@ NOTIFY="${BNET_NOTIFY:-1}"               # 0 disables the desktop notification o
 RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}"
 LOG="$RUN_DIR/start-bnet-game.log"
 LOCK="$RUN_DIR/start-bnet-game.lock"
-exec > "$LOG" 2>&1
 log() { echo "[$(date +%T)] $*"; }
+
+# --- Single-instance guard -------------------------------------------------
+# If another copy of this script is already running (e.g. Play pressed twice),
+# exit immediately rather than racing its launch/cleanup steps. Checked before the
+# log is opened, so the second run can't truncate the log the first is still writing.
+# The PID must also still be this script: a lock left by a hard-killed run can name a
+# PID that has since been reused by something unrelated, which would block every launch.
+if [[ -f "$LOCK" ]]; then
+    old_pid="$(cat "$LOCK" 2>/dev/null)"
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null &&
+       tr '\0' ' ' < "/proc/$old_pid/cmdline" 2>/dev/null | grep -qF "${0##*/}"; then
+        log "Another instance (PID $old_pid) is already running - exiting" >> "$LOG"
+        exit 1
+    fi
+fi
+echo $$ > "$LOCK"
+
+# Keep the previous run's log, so pressing Play again after a failure doesn't erase why it failed.
+[[ -f "$LOG" ]] && mv -f "$LOG" "$RUN_DIR/start-bnet-game.prev.log"
+exec > "$LOG" 2>&1
 log "=== run started $(date) ==="
 
 # Desktop notification on failure. Shows in Desktop Mode; Game Mode has no notification daemon
@@ -43,21 +63,9 @@ log "=== run started $(date) ==="
 notify_error() {
     [[ "$NOTIFY" == "1" ]] || return 0
     command -v notify-send >/dev/null 2>&1 || return 0
-    notify-send --app-name="Battle.net launcher" --urgency=critical         "Battle.net launch failed" "$1"$'
-'"Log: $LOG" >/dev/null 2>&1 &
+    notify-send --app-name="Battle.net launcher" --urgency=critical \
+        "Battle.net launch failed" "$1"$'\n'"Log: $LOG" >/dev/null 2>&1 &
 }
-
-# --- Single-instance guard -------------------------------------------------
-# If another copy of this script is already running (e.g. Play pressed twice),
-# exit immediately rather than racing its launch/cleanup steps.
-if [[ -f "$LOCK" ]]; then
-    old_pid="$(cat "$LOCK" 2>/dev/null)"
-    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-        log "Another instance (PID $old_pid) is already running - exiting"
-        exit 1
-    fi
-fi
-echo $$ > "$LOCK"
 
 if [[ -z "$LAUNCH_CODE" || -z "$GAME_PROCESS" ]]; then
     log "ERROR: set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options"
@@ -123,21 +131,38 @@ send_launch_code() {
     fi
 }
 
-# Finds the PID of the real Windows-side process (cmdline starts with "C:\..."), ignoring
-# every Linux-side wrapper process that merely mentions the same name as an argument.
-find_wine_pid() {
-    pgrep -fia "$1" 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1; exit }'
+# Lists the PIDs of real Windows-side processes (cmdline starts with "C:\...") whose exe is
+# exactly $1 (".exe" optional, case-insensitive), ignoring every Linux-side wrapper process
+# that merely mentions the same name as an argument. The name is matched literally against
+# the end of the exe path, so "Wow" can't match "WowClassic.exe" and "." is just a dot.
+find_wine_pids() {
+    local name="${1,,}"
+    [[ "$name" == *.exe ]] || name="$name.exe"
+    ps -eo pid=,args= 2>/dev/null | awk -v n="$name" '
+        {
+            pid = $1
+            sub(/^ *[0-9]+ /, "")
+            line = tolower($0)
+            if (line !~ /^c:/) next
+            i = index(line, "\\" n)
+            if (i == 0) next
+            after = substr(line, i + 1 + length(n), 1)
+            if (after == "" || after == " ") print pid
+        }'
 }
+find_wine_pid() { find_wine_pids "$1" | head -n 1; }
 
 # Kill every real Battle.net process (main + helpers), then force-kill anything left,
 # then as a last resort tear down the whole Wine session for this prefix - guarantees
 # Proton's wrapper (and therefore Steam's tracked launch) actually ends.
 stop_bnet() {
     local pids
-    pids="$(pgrep -fia 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    pids="$(find_wine_pids 'Battle.net.exe')"
+    # shellcheck disable=SC2086  # word splitting wanted: one PID per word
     [[ -n "$pids" ]] && kill $pids 2>/dev/null
     sleep 2
-    pids="$(pgrep -fia 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
+    pids="$(find_wine_pids 'Battle.net.exe')"
+    # shellcheck disable=SC2086
     [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
     if [[ -n "$wineserver_bin" && -n "$wineprefix" && -d "$wineprefix" ]]; then
         WINEPREFIX="$wineprefix" "$wineserver_bin" -k 2>/dev/null
@@ -147,8 +172,11 @@ stop_bnet() {
 # Runs on any exit - normal completion, an error, or Steam/the user killing the script
 # (e.g. the Stop button). Without this, a non-normal exit could leave Battle.net running
 # and Steam's in-game status stuck on, the same symptom a slow/failed launch used to cause.
+# Battle.net is only closed if this run started it: when the game was already running,
+# the Battle.net session (and Wine session) belong to whoever started it, so leave them be.
+started_bnet=0
 cleanup() {
-    stop_bnet
+    [[ "$started_bnet" == "1" ]] && stop_bnet
     rm -f "$LOCK" 2>/dev/null
 }
 trap cleanup EXIT INT TERM HUP
@@ -164,16 +192,17 @@ else
     sleep 2
 
     # 2. Start Battle.net via the exact command Steam/Proton built for this entry.
+    started_bnet=1
     "$@" &
     bnet_job=$!
 
     # 3. Wait for the real Battle.net process (not the wrapper chain) to appear, then settle.
     deadline=$(( $(date +%s) + BNET_WAIT ))
     while [[ $(date +%s) -lt $deadline ]]; do
-        [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]] && break
+        [[ -n "$(find_wine_pid 'Battle.net.exe')" ]] && break
         sleep 0.5
     done
-    if [[ -n "$(find_wine_pid 'Battle\.net\.exe')" ]]; then
+    if [[ -n "$(find_wine_pid 'Battle.net.exe')" ]]; then
         log "Battle.net process seen"
     else
         log "No Battle.net process seen after ${BNET_WAIT}s, continuing anyway"
