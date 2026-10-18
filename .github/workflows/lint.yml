@@ -16,17 +16,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
+      # Windows PowerShell 5.1, not pwsh: that's what the Steam shortcut runs the script with.
       - name: Install PSScriptAnalyzer
-        shell: pwsh
+        shell: powershell
         # Pinned so the rules don't change under us when the runner image updates.
         run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
       - name: PSScriptAnalyzer
-        shell: pwsh
+        shell: powershell
         run: |
           Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0
-          $results = Invoke-ScriptAnalyzer -Path start-bnet-game.ps1 -Severity Warning, Error
-          if ($results) {
-              $results | Format-Table RuleName, Line, Message -AutoSize -Wrap | Out-String -Width 200 | Write-Host
-              exit 1
+          $results = @(Invoke-ScriptAnalyzer -Path start-bnet-game.ps1 -Severity Warning, Error)
+          # One annotation per finding, so the cause shows on the run page without opening the log.
+          foreach ($r in $results) {
+              Write-Host "::error file=start-bnet-game.ps1,line=$($r.Line)::$($r.RuleName): $($r.Message)"
           }
+          if ($results.Count) { exit 1 }
           Write-Host "No findings."
