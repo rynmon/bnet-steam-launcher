@@ -32,18 +32,20 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
 1. Save `start-bnet-game.ps1`, e.g. to `C:\Scripts\start-bnet-game.ps1`.
 2. Steam → **Add a Non-Steam Game → Browse** (All Files), add:
    ```
-   C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe
+   C:\Windows\System32\conhost.exe
    ```
-   (Don't add the `.ps1` directly — Steam can't run it.)
+   (Don't add the `.ps1` directly — Steam can't run it.) `conhost.exe --headless` runs PowerShell with **no console window at all**, and it stays alive until the script exits, so Steam's "In-game" status still works. `-WindowStyle Hidden` on its own isn't enough: when Windows Terminal is the default terminal (the Windows 11 default), the window stays on screen.
 3. Right-click the entry → **Properties** → rename it, then set **Launch Options**:
    ```
-   -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
    ```
    **The `-File` path must be quoted if it contains any spaces** — e.g. anything under `Documents`, `Program Files`, or `OneDrive`:
    ```
-   -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\you\Documents\Steam Tools\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\you\Documents\Steam Tools\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
    ```
    Without quotes, Windows splits the path at the space and tries to run something that doesn't exist.
+
+   To see the console while you troubleshoot, take out `--headless`, or check the log at `%TEMP%\start-bnet-game.log`.
 4. Set a controller layout in Properties if you use one.
 
 | Parameter | Default | Description |
@@ -176,12 +178,13 @@ Found a new or changed code? Pull requests are welcome.
 
 | Symptom | Fix |
 |---|---|
-| Blank Steam entry, nothing launches | You added the script directly as Target — add `powershell.exe` (Win) or the real `Battle.net.exe` (SteamOS), put the script in Launch Options. |
+| Blank Steam entry, nothing launches | You added the script directly as Target — add `conhost.exe` (Win) or the real `Battle.net.exe` (SteamOS), put the script in Launch Options. |
 | "Both parameters are required" in the log | Add the launch code / process name to Launch Options. |
 | Battle.net opens but game doesn't start | Raise `SettleDelay` (try 10-20 on SteamOS). |
 | Status drops right after the game starts | `GameProcess` doesn't match the real process name — recheck it while running. |
 | (Windows) "Could not find Battle.net.exe" | Pass `-BnetExe` explicitly. |
 | (Windows) Nothing launches, script path has a space in it | Quote the `-File` path (e.g. anything under `Documents` or `Program Files`). |
+| (Windows) A console window still shows up | Target must be `conhost.exe` and Launch Options must start with `--headless powershell.exe`. Needs Windows 10 22H2+ or Windows 11. |
 | (SteamOS) Nothing launches, script path has a space in it | Quote the script path in Launch Options — and don't combine `~` with quotes, use `$HOME` or a full path instead. |
 | (SteamOS) Removing the shortcut wiped the install | Retarget existing shortcuts, never remove once installed. |
 | (SteamOS) Nothing launches despite a correct-looking Target | Target and Start In both need quotes. |

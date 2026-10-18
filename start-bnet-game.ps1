@@ -39,8 +39,9 @@
     Give up if the game process hasn't appeared after this many seconds.
 
 .EXAMPLE
+    # Steam shortcut target: C:\Windows\System32\conhost.exe (--headless means no console window at all)
     # Steam launch options for WoW Forever:
-    -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+    --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
 #>
 [CmdletBinding()]
 param(
