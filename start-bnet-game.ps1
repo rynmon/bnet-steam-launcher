@@ -38,6 +38,14 @@
 .PARAMETER StartupWait
     Give up if the game process hasn't appeared after this many seconds.
 
+.PARAMETER RelaunchGrace
+    After the game exits, keep watching this many seconds for it to come back (games that restart
+    themselves after a patch, or a launcher stub handing off). 0 disables the check.
+
+.PARAMETER NoPopup
+    Don't show an error popup when the launch fails. The console is hidden, so the popup is the
+    only visible sign of a failure; the details are always in the log.
+
 .EXAMPLE
     # Steam shortcut target: C:\Windows\System32\conhost.exe (--headless means no console window at all)
     # Steam launch options for WoW Forever:
@@ -51,11 +59,14 @@ param(
     [int]$BnetMaxWait = 20,
     [int]$SettleDelay = 3,
     [int]$RetryAfter  = 10,
-    [int]$StartupWait = 120
+    [int]$StartupWait = 120,
+    [int]$RelaunchGrace = 10,
+    [switch]$NoPopup
 )
 
 $logName = if ($PSCommandPath) { [IO.Path]::GetFileNameWithoutExtension($PSCommandPath) } else { "start-bnet-game" }
-Start-Transcript -Path (Join-Path $env:TEMP "$logName.log") -Force | Out-Null
+$logPath = Join-Path $env:TEMP "$logName.log"
+Start-Transcript -Path $logPath -Force | Out-Null
 
 $lockFile    = Join-Path $env:TEMP "$logName.lock"
 $createdLock = $false
@@ -96,12 +107,35 @@ function Stop-Bnet {
     Get-Process -Name "Battle.net" -ErrorAction SilentlyContinue | Stop-Process -Force
     Wait-Process -Name "Battle.net" -Timeout 5 -ErrorAction SilentlyContinue
 }
+function Wait-GameReturn {
+    # Returns the game process if it reappears within $RelaunchGrace seconds, else $null.
+    $deadline = (Get-Date).AddSeconds($RelaunchGrace)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 500
+        $g = Get-Game
+        if ($g) { return $g }
+    }
+    return $null
+}
+function Show-ErrorPopup {
+    param([string]$Message)
+    if ($NoPopup) { return }
+    # WScript.Shell's Popup closes itself after the timeout, so a popup hidden behind Big Picture
+    # can't leave Steam stuck on "In-game". 0x10 = error icon, 0x10000 = foreground, 0x40000 = topmost.
+    try {
+        $text = "$Message`n`nLog: $script:logPath"
+        (New-Object -ComObject WScript.Shell).Popup($text, 30, "Battle.net launcher", 0x10 -bor 0x10000 -bor 0x40000) | Out-Null
+    } catch {
+        Write-Log "Could not show error popup: $($_.Exception.Message)"
+    }
+}
 function Test-BnetWindow {
     [bool](Get-Process -Name "Battle.net" -ErrorAction SilentlyContinue |
            Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero })
 }
 
 $exitCode    = 0
+$failMessage = $null
 $startedBnet = $false
 
 try {
@@ -165,18 +199,26 @@ try {
         }
     }
 
-    # 4. Stay alive until the game closes so Steam keeps the in-game status.
+    # 4. Stay alive until the game closes so Steam keeps the in-game status. If it comes back
+    #    within $RelaunchGrace seconds (self-restart after a patch, launcher stub handoff),
+    #    keep waiting on the new process instead of closing Battle.net under it.
     if ($game) {
-        Write-Log "Game running (PID $($game.Id)), waiting for exit"
-        $game.WaitForExit()
-        Write-Log "Game exited"
+        while ($game) {
+            Write-Log "Game running (PID $($game.Id)), waiting for exit"
+            $game.WaitForExit()
+            Write-Log "Game exited"
+            $game = Wait-GameReturn
+            if ($game) { Write-Log "Game came back as PID $($game.Id)" }
+        }
     } else {
-        Write-Log "Game process '$GameProcess' never appeared within $StartupWait s - check -GameProcess / -LaunchCode"
+        $failMessage = "Game process '$GameProcess' never appeared within $StartupWait s - check -GameProcess / -LaunchCode"
+        Write-Log $failMessage
         $exitCode = 2
     }
 }
 catch {
-    Write-Log "ERROR: $($_.Exception.Message)"
+    $failMessage = "ERROR: $($_.Exception.Message)"
+    Write-Log $failMessage
     $exitCode = 1
 }
 finally {
@@ -188,6 +230,8 @@ finally {
     if ($createdLock -and (Test-Path -LiteralPath $lockFile)) {
         Remove-Item -LiteralPath $lockFile -Force -ErrorAction SilentlyContinue
     }
+    # After cleanup, so Battle.net is already closed while the popup is up.
+    if ($failMessage) { Show-ErrorPopup $failMessage }
     Stop-Transcript | Out-Null
 }
 

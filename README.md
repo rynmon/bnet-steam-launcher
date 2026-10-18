@@ -55,6 +55,8 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
 | `-BnetExe` | auto-detect | Path to `Battle.net.exe`, if auto-detection fails. |
 | `-BnetMaxWait` / `-SettleDelay` | `20` / `3` | Seconds waiting for Battle.net's window, then settling, before sending the launch code. |
 | `-RetryAfter` / `-StartupWait` | `10` / `120` | How often to resend the launch code (repeats, not a one-off) until it works or this many seconds pass. |
+| `-RelaunchGrace` | `10` | Seconds to keep watching after the game exits, in case it restarts itself. `0` disables. |
+| `-NoPopup` | off | Don't show the error popup when a launch fails. |
 
 Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
 
@@ -89,6 +91,8 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically.
 | `BNET_GAME_PROCESS` | required | Same as `-GameProcess` above — find via `pgrep -fa <name>` while the game runs; look for the `C:\...` path. |
 | `BNET_MAX_WAIT` / `BNET_SETTLE_DELAY` | `30` / `8` | Same idea as the Windows waits. |
 | `BNET_RETRY_AFTER` / `BNET_STARTUP_WAIT` | `10` / `120` | Same idea as the Windows waits. |
+| `BNET_RELAUNCH_GRACE` | `10` | Same as `-RelaunchGrace` above. |
+| `BNET_NOTIFY` | `1` | `0` disables the desktop notification on failure (Desktop Mode only; Game Mode doesn't show them). |
 
 Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1000/`), cleaned up automatically — including if Steam's Stop button kills the script mid-run.
 
@@ -102,6 +106,9 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 - A lock file stops two overlapping launches (e.g. double-pressing Play) from racing each other.
 - If the game process is already running when the script starts (launched manually, or Play pressed while already in-game), Battle.net is left alone entirely — the script just waits on the existing process instead of restarting anything.
 - The launch code is resent repeatedly (every `RetryAfter` seconds) until the game appears, not just once — a silently-ignored first attempt used to mean waiting out the full `StartupWait` timeout doing nothing; now it just costs one retry interval.
+- If the game exits and comes back within `RelaunchGrace` seconds (a self-restart after a patch, or a launcher stub handing off to the real game), the script keeps waiting on the new process instead of closing Battle.net under it. The cost is that Steam's "In-game" status clears that many seconds after you quit.
+- When a launch fails (missing settings, or the game never appears), Windows shows an error popup that closes itself after 30 seconds, and SteamOS sends a desktop notification. Both point to the log. Pressing Play twice doesn't trigger one.
+- On SteamOS, the Wine session teardown uses the `wineserver` bundled with the Proton build Steam launched, falling back to one on `PATH`.
 - Log lines are timestamped, so a slow step and a stuck one look different even without watching it live.
 
 ## Launch codes
@@ -190,7 +197,8 @@ Found a new or changed code? Pull requests are welcome.
 | (SteamOS) Nothing launches despite a correct-looking Target | Target and Start In both need quotes. |
 | (SteamOS) Steam Input doesn't work | Set a gamepad layout under Properties → Controller. |
 | (SteamOS) Controller input also navigates Battle.net's UI in the background while playing | Enable "Exit Battle.net after launching a game" in Battle.net's own settings (see Setup step 6). |
-| (SteamOS) Battle.net/status doesn't clear on exit | Confirm `wineserver` is on `PATH` — the last-resort cleanup step needs it. |
+| (SteamOS) Battle.net/status doesn't clear on exit | Check the log for the `wineserver:` line. If it says none was found, the last-resort cleanup was skipped; confirm Launch Options still end in `%command%`. |
+| Steam status stays "In-game" ~10s after quitting | Expected: that's the `RelaunchGrace` window. Lower it, or set `0` if your game never restarts itself. |
 | (SteamOS) "Could not identify the Proton binary" | Confirm Launch Options still end in `%command%` and weren't edited. |
 
 Exit codes (both): `0` normal, `1` error, `2` game never appeared.

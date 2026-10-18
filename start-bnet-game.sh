@@ -28,6 +28,8 @@ BNET_WAIT="${BNET_MAX_WAIT:-30}"         # seconds to wait for the real Battle.n
 SETTLE_DELAY="${BNET_SETTLE_DELAY:-8}"   # extra seconds after Battle.net appears (raise if the launch code gets ignored)
 RETRY_AFTER="${BNET_RETRY_AFTER:-10}"    # resend the launch code every N seconds until the game appears (not just once)
 STARTUP_WAIT="${BNET_STARTUP_WAIT:-120}" # give up if the game process hasn't appeared after this many seconds
+RELAUNCH_GRACE="${BNET_RELAUNCH_GRACE:-10}" # after the game exits, watch this long for it to come back (self-restart after a patch); 0 disables
+NOTIFY="${BNET_NOTIFY:-1}"               # 0 disables the desktop notification on failure
 
 RUN_DIR="${XDG_RUNTIME_DIR:-/tmp}"
 LOG="$RUN_DIR/start-bnet-game.log"
@@ -35,6 +37,15 @@ LOCK="$RUN_DIR/start-bnet-game.lock"
 exec > "$LOG" 2>&1
 log() { echo "[$(date +%T)] $*"; }
 log "=== run started $(date) ==="
+
+# Desktop notification on failure. Shows in Desktop Mode; Game Mode has no notification daemon
+# for it, so there the log is still the place to look. Backgrounded so it can never block exit.
+notify_error() {
+    [[ "$NOTIFY" == "1" ]] || return 0
+    command -v notify-send >/dev/null 2>&1 || return 0
+    notify-send --app-name="Battle.net launcher" --urgency=critical         "Battle.net launch failed" "$1"$'
+'"Log: $LOG" >/dev/null 2>&1 &
+}
 
 # --- Single-instance guard -------------------------------------------------
 # If another copy of this script is already running (e.g. Play pressed twice),
@@ -50,11 +61,13 @@ echo $$ > "$LOCK"
 
 if [[ -z "$LAUNCH_CODE" || -z "$GAME_PROCESS" ]]; then
     log "ERROR: set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options"
+    notify_error "Set BNET_LAUNCH_CODE and BNET_GAME_PROCESS before %command% in Launch Options."
     rm -f "$LOCK"
     exit 1
 fi
 if [[ $# -eq 0 ]]; then
     log "ERROR: no command received - Launch Options must end with %command%"
+    notify_error "No command received - Launch Options must end with %command%."
     rm -f "$LOCK"
     exit 1
 fi
@@ -84,6 +97,21 @@ else
     log "Could not identify the Proton binary from the base command - will fall back to resending the full command"
 fi
 
+# Proton bundles its own wineserver (files/bin on current Proton and GE-Proton, dist/bin on
+# old releases); SteamOS has none on PATH. Prefer the one matching this Proton build.
+wineserver_bin=""
+if [[ -n "$proton_bin" ]]; then
+    for candidate in "${proton_bin%/*}/files/bin/wineserver" "${proton_bin%/*}/dist/bin/wineserver"; do
+        if [[ -x "$candidate" ]]; then wineserver_bin="$candidate"; break; fi
+    done
+fi
+[[ -z "$wineserver_bin" ]] && wineserver_bin="$(command -v wineserver 2>/dev/null)"
+if [[ -n "$wineserver_bin" ]]; then
+    log "wineserver: $wineserver_bin"
+else
+    log "No wineserver found - the last-resort Wine session teardown on exit will be skipped"
+fi
+
 # Args passed here are only used by the fallback path.
 send_launch_code() {
     if [[ -n "$proton_bin" && -x "$proton_bin" ]]; then
@@ -111,8 +139,8 @@ stop_bnet() {
     sleep 2
     pids="$(pgrep -fia 'Battle\.net\.exe' 2>/dev/null | awk '$2 ~ /^[Cc]:/ { print $1 }')"
     [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null
-    if [[ -n "$wineprefix" && -d "$wineprefix" ]]; then
-        WINEPREFIX="$wineprefix" wineserver -k 2>/dev/null
+    if [[ -n "$wineserver_bin" && -n "$wineprefix" && -d "$wineprefix" ]]; then
+        WINEPREFIX="$wineprefix" "$wineserver_bin" -k 2>/dev/null
     fi
 }
 
@@ -174,14 +202,26 @@ else
     done
 fi
 
-# 6. Stay alive until the game exits, so Steam keeps the in-game status.
+# 6. Stay alive until the game exits, so Steam keeps the in-game status. If it comes back
+#    within $RELAUNCH_GRACE seconds (self-restart after a patch, launcher stub handoff),
+#    keep waiting on the new process instead of closing Battle.net under it.
 if [[ -n "$game_pid" ]]; then
-    log "Game running (PID $game_pid), waiting for exit"
-    while kill -0 "$game_pid" 2>/dev/null; do sleep 1; done
-    log "Game exited"
+    while [[ -n "$game_pid" ]]; do
+        log "Game running (PID $game_pid), waiting for exit"
+        while kill -0 "$game_pid" 2>/dev/null; do sleep 1; done
+        log "Game exited"
+        game_pid=""
+        deadline=$(( $(date +%s) + RELAUNCH_GRACE ))
+        while [[ $(date +%s) -lt $deadline ]]; do
+            sleep 1
+            game_pid="$(find_wine_pid "$GAME_PROCESS")"
+            [[ -n "$game_pid" ]] && { log "Game came back as PID $game_pid"; break; }
+        done
+    done
     exit_code=0
 else
     log "Game process '$GAME_PROCESS' never appeared within ${STARTUP_WAIT}s"
+    notify_error "Game process '$GAME_PROCESS' never appeared within ${STARTUP_WAIT}s - check BNET_GAME_PROCESS / BNET_LAUNCH_CODE."
     exit_code=2
 fi
 
