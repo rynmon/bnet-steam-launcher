@@ -8,17 +8,25 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: ShellCheck
         run: shellcheck --severity=warning start-bnet-game.sh
 
   psscriptanalyzer:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        # Pinned so the rules don't change under us when the runner image updates.
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Scope CurrentUser -Force
       - name: PSScriptAnalyzer
         shell: pwsh
         run: |
+          Import-Module PSScriptAnalyzer -RequiredVersion 1.25.0
           $results = Invoke-ScriptAnalyzer -Path start-bnet-game.ps1 -Severity Warning, Error
-          $results | Format-Table -AutoSize | Out-String | Write-Host
-          if ($results) { exit 1 }
+          if ($results) {
+              $results | Format-Table RuleName, Line, Message -AutoSize -Wrap | Out-String -Width 200 | Write-Host
+              exit 1
+          }
+          Write-Host "No findings."
