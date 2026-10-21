@@ -38,11 +38,11 @@ Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh
    (Don't add the `.ps1` directly — Steam can't run it.) `conhost.exe --headless` runs PowerShell with **no console window at all**, and it stays alive until the script exits, so Steam's "In-game" status still works. `-WindowStyle Hidden` on its own isn't enough: when Windows Terminal is the default terminal (the Windows 11 default), the window stays on screen.
 3. Right-click the entry → **Properties** → rename it, then set **Launch Options**:
    ```
-   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess Wow
    ```
    **The `-File` path must be quoted if it contains any spaces** — e.g. anything under `Documents`, `Program Files`, or `OneDrive`:
    ```
-   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\you\Documents\Steam Tools\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+   --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Users\you\Documents\Steam Tools\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess Wow
    ```
    Without quotes, Windows splits the path at the space and tries to run something that doesn't exist.
 
@@ -74,13 +74,13 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically. The 
 3. Save the script, e.g. `~/scripts/start-bnet-game.sh`, and `chmod +x` it.
 4. Set **Launch Options**:
    ```
-   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=WowB.exe ~/scripts/start-bnet-game.sh %command%
+   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=Wow.exe ~/scripts/start-bnet-game.sh %command%
    ```
    Order matters: env vars, then script path, then `%command%` last.
 
    **If the script's path contains a space, quote it** — Steam passes non-Steam Linux launch options through a real shell, so it splits on spaces exactly like any shell command would:
    ```
-   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=WowB.exe "/home/deck/Steam Tools/start-bnet-game.sh" %command%
+   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=Wow.exe "/home/deck/Steam Tools/start-bnet-game.sh" %command%
    ```
    **Don't combine `~` with quotes** — `"~/Steam Tools/start-bnet-game.sh"` won't expand `~`, since quoting disables that expansion in the shell. Use a full path (as above) or `$HOME`, which does expand inside quotes: `"$HOME/Steam Tools/start-bnet-game.sh"`.
 5. Set a real gamepad layout under Properties → Controller — non-Steam shortcuts don't get one by default, and Steam Input won't work without it.
@@ -116,13 +116,15 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 
 Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work. Only **WoW Forever** (`WoWF`) has actually been tested with this script; everything else comes from the community sources below.
 
-Last checked: 2026-09-21.
+> **WoW Forever needs one manual click right now.** Since Battle.net 2.53.6 (October 2026), `--exec="launch WoWF"` only selects WoW Forever in Battle.net and doesn't start it — the same command still starts other games, e.g. Warcraft III (`W3`). Until that changes, press **Play** yourself once Battle.net opens. Everything else still works: the game starts from the Battle.net the script launched, so Steam's in-game status, overlay and Steam Input are unaffected. Give yourself time and stop the resends (each one refocuses Battle.net): add `-StartupWait 300 -RetryAfter 300` on Windows, or `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300` on SteamOS.
+
+Last checked: 2026-10-21.
 
 ### Blizzard
 
 | Game | Code | Notes |
 |---|---|---|
-| WoW Forever | `WoWF` | Tested with this script. |
+| WoW Forever | `WoWF` | Tested with this script. Since Battle.net 2.53.6 (October 2026) this only selects WoW Forever; press Play yourself. Use `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). Process: `Wow` (was `WowB` during the beta). |
 | World of Warcraft | `WoW` | |
 | WoW Classic (all versions) | `WoWC` | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Includes Hellfire. |

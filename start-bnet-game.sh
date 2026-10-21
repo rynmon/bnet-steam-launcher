@@ -3,7 +3,7 @@
 #
 # Add Battle.net.exe as a non-Steam game, force a Proton compatibility tool, then set
 # Launch Options to:
-#   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=WowB.exe /path/to/start-bnet-game.sh %command%
+#   BNET_LAUNCH_CODE=WoWF BNET_GAME_PROCESS=Wow.exe /path/to/start-bnet-game.sh %command%
 #
 # %command% expands to the full reaper/Proton chain Steam builds for this entry. This
 # script runs that chain itself, waits for the real (Windows-side) Battle.net process,

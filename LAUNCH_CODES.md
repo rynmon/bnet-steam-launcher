@@ -4,13 +4,13 @@ Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, 
 
 **Status:** Verified (tested with this script) · Multiple sources · Single source (try it and check the log).
 
-Last checked: 2026-09-21.
+Last checked: 2026-10-21.
 
 ### Blizzard
 
 | Game | Code | Status | Notes |
 |---|---|---|---|
-| WoW Forever | `WoWF` | Verified | |
+| WoW Forever | `WoWF` | Verified, selects only | Since Battle.net 2.53.6 (October 2026) this only selects WoW Forever; press Play yourself. Use `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). Process: `Wow` (was `WowB` during the beta). |
 | World of Warcraft | `WoW` | Multiple sources | |
 | WoW Classic (all versions) | `WoWC` | Multiple sources | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Single source | Includes Hellfire. |

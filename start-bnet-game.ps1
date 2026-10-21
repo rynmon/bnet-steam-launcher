@@ -49,7 +49,7 @@
 .EXAMPLE
     # Steam shortcut target: C:\Windows\System32\conhost.exe (--headless means no console window at all)
     # Steam launch options for WoW Forever:
-    --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess WowB
+    --headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Scripts\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess Wow
 #>
 [CmdletBinding()]
 param(
@@ -165,7 +165,7 @@ try {
     # Checked here rather than with [Parameter(Mandatory)]: in a hidden window a missing mandatory
     # parameter would wait at an invisible prompt forever, leaving Steam stuck on "In-game".
     if (-not $LaunchCode -or -not $GameProcess) {
-        throw "Both -LaunchCode and -GameProcess are required, e.g. -LaunchCode WoWF -GameProcess WowB"
+        throw "Both -LaunchCode and -GameProcess are required, e.g. -LaunchCode WoWF -GameProcess Wow"
     }
     $GameProcess = $GameProcess -replace '\.exe$', ''
 
