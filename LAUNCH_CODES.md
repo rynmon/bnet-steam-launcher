@@ -11,6 +11,7 @@ Last checked: 2026-10-21.
 | Game | Code | Status | Notes |
 |---|---|---|---|
 | WoW Forever | `WoWF` | Verified, selects only | Since Battle.net 2.53.6 (October 2026) this only selects WoW Forever; press Play yourself. Use `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). Process: `Wow` (was `WowB` during the beta). |
+| WoW Forever Beta | `WoWPTR` | Checked, selects only | Selects only, press Play (same Battle.net change as above). Shared with Blizzard's other WoW test clients, so pick the WoW Forever beta in the version dropdown once; Battle.net remembers it. Process: `WowB`. |
 | World of Warcraft | `WoW` | Multiple sources | |
 | WoW Classic (all versions) | `WoWC` | Multiple sources | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Single source | Includes Hellfire. |
