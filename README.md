@@ -116,16 +116,13 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 
 Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work. Only **WoW Forever** (`WoWF`) has actually been tested with this script; everything else comes from the community sources below.
 
-> **WoW Forever (and its beta) needs one manual click right now.** Since Battle.net 2.53.6 (October 2026), `--exec="launch WoWF"` only selects WoW Forever in Battle.net and doesn't start it — the same command still starts other games, e.g. Warcraft III (`W3`). Until that changes, press **Play** yourself once Battle.net opens. Everything else still works: the game starts from the Battle.net the script launched, so Steam's in-game status, overlay and Steam Input are unaffected. Give yourself time and stop the resends (each one refocuses Battle.net): add `-StartupWait 300 -RetryAfter 300` on Windows, or `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300` on SteamOS.
-
-Last checked: 2026-10-21.
+Last checked: 2026-10-22.
 
 ### Blizzard
 
 | Game | Code | Notes |
 |---|---|---|
-| WoW Forever | `WoWF` | Tested with this script. Since Battle.net 2.53.6 (October 2026) this only selects WoW Forever; press Play yourself. Use `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). Process: `Wow` (was `WowB` during the beta). |
-| WoW Forever Beta | `WoWPTR` | Checked against Battle.net 2.53.6, not yet through Steam. Selects only, press Play (same Battle.net change as above). Shared with Blizzard's other WoW test clients, so pick the WoW Forever beta in the version dropdown once; Battle.net remembers it. Process: `WowB`. |
+| WoW Forever | `WoWF` | Tested with this script (beta, 2026-10-22). Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
 | World of Warcraft | `WoW` | |
 | WoW Classic (all versions) | `WoWC` | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Includes Hellfire. |

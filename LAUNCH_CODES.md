@@ -4,14 +4,13 @@ Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, 
 
 **Status:** Verified (tested with this script) · Multiple sources · Single source (try it and check the log).
 
-Last checked: 2026-10-21.
+Last checked: 2026-10-22.
 
 ### Blizzard
 
 | Game | Code | Status | Notes |
 |---|---|---|---|
-| WoW Forever | `WoWF` | Verified, selects only | Since Battle.net 2.53.6 (October 2026) this only selects WoW Forever; press Play yourself. Use `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). Process: `Wow` (was `WowB` during the beta). |
-| WoW Forever Beta | `WoWPTR` | Checked, selects only | Selects only, press Play (same Battle.net change as above). Shared with Blizzard's other WoW test clients, so pick the WoW Forever beta in the version dropdown once; Battle.net remembers it. Process: `WowB`. |
+| WoW Forever | `WoWF` | Verified | Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
 | World of Warcraft | `WoW` | Multiple sources | |
 | WoW Classic (all versions) | `WoWC` | Multiple sources | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Single source | Includes Hellfire. |
