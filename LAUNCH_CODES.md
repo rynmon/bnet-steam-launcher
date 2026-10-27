@@ -4,7 +4,7 @@ Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, 
 
 **Status:** Verified (tested with this script) · Multiple sources · Single source (try it and check the log).
 
-Last checked: 2026-10-22.
+Last checked: 2026-10-27.
 
 ### Blizzard
 

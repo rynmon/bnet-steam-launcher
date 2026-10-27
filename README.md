@@ -116,13 +116,13 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 
 Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work. Only **WoW Forever** (`WoWF`) has actually been tested with this script; everything else comes from the community sources below.
 
-Last checked: 2026-10-22.
+Last checked: 2026-10-27.
 
 ### Blizzard
 
 | Game | Code | Notes |
 |---|---|---|
-| WoW Forever | `WoWF` | Tested with this script (beta, 2026-10-22). Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
+| WoW Forever | `WoWF` | Tested with this script (release and beta, last on 2026-10-27). Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
 | World of Warcraft | `WoW` | |
 | WoW Classic (all versions) | `WoWC` | Version is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Includes Hellfire. |
@@ -189,6 +189,7 @@ Found a new or changed code? Pull requests are welcome.
 | Blank Steam entry, nothing launches | You added the script directly as Target — add `conhost.exe` (Win) or the real `Battle.net.exe` (SteamOS), put the script in Launch Options. |
 | "Both parameters are required" in the log | Add the launch code / process name to Launch Options. |
 | Battle.net opens but game doesn't start | Raise `SettleDelay` (try 10-20 on SteamOS). |
+| Game opens, but the log keeps saying "Game not seen yet" until it gives up | `GameProcess` doesn't match the game's exe (Task Manager → Details) — e.g. WoW Forever is `Wow` since release; `WowB` was the beta. |
 | Status drops right after the game starts | `GameProcess` doesn't match the real process name — recheck it while running. |
 | (Windows) "Could not find Battle.net.exe" | Pass `-BnetExe` explicitly. |
 | (Windows) Nothing launches, script path has a space in it | Quote the `-File` path (e.g. anything under `Documents` or `Program Files`). |
