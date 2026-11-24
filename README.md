@@ -6,29 +6,102 @@
 ![Steam Deck](https://img.shields.io/badge/Steam%20Deck-supported-1b2838?logo=steamdeck&logoColor=white)
 ![Steam Machine](https://img.shields.io/badge/Steam%20Machine-supported-1b2838?logo=steam&logoColor=white)
 ![Shell](https://img.shields.io/badge/shell-PowerShell%20%7C%20Bash-89e051.svg)
+[![App](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/app.yml/badge.svg)](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/app.yml)
 [![Lint](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml/badge.svg)](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml)
 
 Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
-Works on **Windows** (PowerShell) and **SteamOS** — Steam Deck and Steam Machine (Bash + Proton). Tested on all three.
+Works on **Windows** and **SteamOS** — Steam Deck and Steam Machine (through Proton).
 
 ## Why not just add Battle.net as a shortcut?
 
 Launching `Battle.net.exe --exec="launch WoWF"` directly from Steam breaks in a few ways: Steam drops the in-game status within seconds because the launch command hands off and returns immediately; the overlay and Steam Input only attach to processes descended from the Steam launch, so an already-running Battle.net never gets them; and on SteamOS, Battle.net has no native client and has to run under Proton, where naively resending the launch command can hang.
 
-This script instead restarts Battle.net from the Steam launch itself, waits for it to be ready, sends the launch command, waits for the actual game process, and stays alive (keeping the status up) until the game exits — then closes Battle.net so the status clears.
+This launcher instead restarts Battle.net from the Steam launch itself, waits for it to be ready, sends the launch command, waits for the actual game process, and stays alive (keeping the status up) until the game exits — then closes Battle.net so the status clears.
 
-Two versions, same name: `start-bnet-game.ps1` (Windows) and `start-bnet-game.sh` (SteamOS/Linux).
+It comes as one app, `bnet-launcher`, that both sets up your Steam shortcuts and launches the games. The original scripts (`start-bnet-game.ps1` / `.sh`) still work for now, but are the old method: they're documented [further down](#manual-setup-with-the-scripts--windows) and will be removed in a later release.
 
 ## Requirements
 
-- **Windows:** PowerShell 5.1+ (built in), Steam, Battle.net desktop app.
-- **SteamOS:** Steam, the Windows Battle.net installer run once under Proton (GE-Proton recommended) — no native Linux client exists.
-- Tested with WoW Forever only. Other games use the same mechanism and should work — see [Launch codes](#launch-codes) below.
+- Steam, signed in at least once.
+- Battle.net — the app can install it for you (on SteamOS, the Windows version under Proton; there's no native Linux client).
+- Tested with WoW Forever on Windows. Other games use the same mechanism and should work — see [Launch codes](#launch-codes) below.
 
 ---
 
-## Setup — Windows
+## Setup with the app
+
+1. Download `bnet-launcher` for your system from [Releases](https://github.com/rynmon/bnet-steam-launcher/releases): `bnet-launcher-windows-x86_64.exe`, or `bnet-launcher-linux-x86_64` for SteamOS.
+   - **Windows:** the app isn't code-signed, so the first time you open it Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**. Some antivirus tools may also be wary of it, since it closes Battle.net and edits Steam's files.
+   - **SteamOS:** use **Desktop Mode**. Mark the file as executable first: right-click → Properties → Permissions → *Is executable*.
+2. Open it. It finds Steam, your Steam account and your installed Battle.net games.
+3. **No Battle.net yet?** Press **Install Battle.net**. On Windows it downloads and opens Battle.net's installer. On SteamOS it also adds a **"Battle.net"** shortcut to Steam that runs the installer with Proton (GE-Proton if you have it). Install Battle.net, sign in, install your games, then press **Refresh**. On SteamOS, keep that "Battle.net" shortcut: it holds the Proton prefix everything is installed in. The app turns it into a normal Battle.net shortcut the next time you save.
+4. Tick the games you want in Steam and press **Save to Steam**. Steam has to be closed while its shortcuts change; the app offers to close it and starts it again afterwards.
+5. Set a controller layout in each new shortcut's Properties if you use one.
+
+Installed a game later? Open the app again (or press **Refresh**) and tick it.
+
+**Options** (in the window):
+
+- **Close Battle.net when a game starts** — Battle.net's own "When I launch a game → Exit Battle.net completely" setting. Recommended on SteamOS, where Battle.net's window can otherwise keep the controller while you play. Battle.net has to be closed to change it.
+- **Artwork from SteamGridDB** — paste a free [SteamGridDB API key](https://www.steamgriddb.com/profile/preferences/api) and the app downloads a cover, wide cover, background and logo for each shortcut it adds. The artwork is made by the SteamGridDB community. Anything you've already set is never replaced. The key is saved in `%APPDATA%\bnet-launcher\config.json` (`~/.config/bnet-launcher/` on SteamOS).
+
+What it does for each game:
+
+- Copies itself to a fixed place (`%LOCALAPPDATA%\bnet-launcher\` or `~/.local/share/bnet-launcher/`), so the shortcuts keep working if you move or delete the download.
+- Adds a Steam shortcut with the launch options filled in: the launch code, the process names, and the game's install folder. Anything started from that folder counts as the game, so a wrong or changed process name (like `WowB` after WoW Forever's release) can't cause the game to be launched over and over.
+- **Windows:** the shortcut runs `bnet-launcher.exe` directly — no console window and no `conhost` / PowerShell setup.
+- **SteamOS:** the shortcut targets `Battle.net.exe` in the Proton prefix you installed it into, uses the same Proton version as that prefix, and shares the prefix instead of getting an empty new one. The shortcut that owns the prefix is never removed by the app, since removing it can delete Battle.net and your games.
+- A game that already has a shortcut made with the scripts is switched over in place, keeping its name, artwork, controller layout and (on SteamOS) its prefix.
+- Steam's shortcut file is backed up before every change (`shortcuts.vdf.bnet-launcher-<time>.bak`, last five kept).
+
+- **SteamOS:** Steam's settings file (`config.vdf`) is only changed if the app can read it and write it back exactly as it was. If it can't, it leaves the file alone and asks you to set the new shortcut's Proton version yourself (Properties → Compatibility).
+
+Untick a game and save to remove its shortcut. Only shortcuts made by the app are ever removed.
+
+The same things work from a terminal: `bnet-launcher list`, `bnet-launcher add WoWF`, `bnet-launcher remove WoWF`, `bnet-launcher install-bnet` (add `--restart-steam` to let it close and restart Steam, and `--artwork` to download artwork with the saved key).
+
+### Updating and uninstalling
+
+- **Update:** download the new version, open it, and press **Save to Steam** (tick or untick anything to enable it, or add a game). It replaces the installed copy that the shortcuts use.
+- **Uninstall:** untick every game and save, then delete `%LOCALAPPDATA%\bnet-launcher` (Windows) or `~/.local/share/bnet-launcher` (SteamOS), and the settings folder above if you saved an API key.
+
+### Known limits
+
+- **WoW Retail and WoW Forever share an install folder.** If Retail is already running when you press Play on WoW Forever (or the other way round), the app treats the running one as the game and tracks it instead of starting the other.
+- **Games other than WoW Forever are untested.** Their launch codes come from community sources, and process names for some of them are best guesses — the install-folder check usually covers a wrong name.
+- **SteamOS support has not yet been tested on a device.** The launching logic is carried over from the tested `start-bnet-game.sh`, but the app's setup steps (shared Proton prefix, Proton version, installer shortcut) are new.
+
+### What the shortcut runs
+
+```
+bnet-launcher run --code WoWF --process Wow --process WowB --game-dir "O:/Blizzard/World of Warcraft"
+```
+
+On SteamOS it's wrapped around Steam's own command: `STEAM_COMPAT_DATA_PATH=<prefix> <bnet-launcher> run ... -- %command%`. You can edit these in the shortcut's Launch Options:
+
+| Option | Default | Description |
+|---|---|---|
+| `--code` | required | Battle.net launch code, e.g. `WoWF`. |
+| `--process` | | Game process name, with or without `.exe`. Repeatable. |
+| `--game-dir` | | Game install folder; anything started from it counts as the game. Repeatable. At least one of `--process` / `--game-dir` is needed. |
+| `--bnet-exe` | auto-detect | Windows: path to `Battle.net.exe`. |
+| `--bnet-max-wait` / `--settle-delay` | `20` / `3` (SteamOS `30` / `8`) | Seconds waiting for Battle.net, then settling, before sending the launch code. |
+| `--retry-after` / `--startup-wait` | `10` / `120` | How often to resend the launch code until the game appears, and when to give up. |
+| `--relaunch-grace` | `10` | Seconds to keep watching after the game exits, in case it restarts itself. `0` disables. |
+| `--no-popup` | off | Don't show the error popup (Windows) or notification (SteamOS) when a launch fails. |
+
+Log: `%TEMP%\bnet-launcher.log` (Windows) or `$XDG_RUNTIME_DIR/bnet-launcher.log` (SteamOS); the previous run's is kept as `bnet-launcher.prev.log`. Exit codes match the scripts: `0` normal, `1` error, `2` game never appeared.
+
+### Building from source
+
+Install Rust (on Windows, also the Visual Studio Build Tools' C++ workload), then `cargo build --release`. On Linux, the window needs the `libxkbcommon` and `libxcb` development packages. The game list lives in [games.json](games.json), which a test keeps in step with [LAUNCH_CODES.md](LAUNCH_CODES.md).
+
+---
+
+## Manual setup with the scripts — Windows
+
+> The old method: the [app](#setup-with-the-app) does all of this for you. The scripts will be removed in a later release.
 
 1. Save `start-bnet-game.ps1`, e.g. to `C:\Scripts\start-bnet-game.ps1`.
 2. Steam → **Add a Non-Steam Game → Browse** (All Files), add:
@@ -63,7 +136,9 @@ Log/lock: `%TEMP%\start-bnet-game.log` / `.lock`, cleaned up automatically. The 
 
 ---
 
-## Setup — SteamOS / Steam Deck / Steam Machine
+## Manual setup with the scripts — SteamOS / Steam Deck / Steam Machine
+
+> The old method: the [app](#setup-with-the-app) does all of this for you, including installing Battle.net. The scripts will be removed in a later release.
 
 1. **Install Battle.net in Desktop Mode first:** add the installer as a non-Steam game, force a Proton version (GE-Proton) under Properties → Compatibility, run it once to install Battle.net and your game.
 2. **Don't remove that shortcut** — doing so can delete its whole Proton prefix (and your install with it). Instead, **retarget it**: right-click → Properties, set Target and Start In to the installed exe, found under:
@@ -186,6 +261,14 @@ Found a new or changed code? Pull requests are welcome.
 
 | Symptom | Fix |
 |---|---|
+| (App, Windows) "Windows protected your PC" when opening it | The app isn't code-signed. Click **More info → Run anyway**. |
+| (App) "Steam didn't exit within a minute" | Close Steam yourself (Steam → Exit), then save again. |
+| (App) "Battle.net's setting wasn't changed" | Battle.net was open, and it overwrites its settings when it closes. Close Battle.net, then save again. |
+| (App) A game is missing from the list | Install it in Battle.net, then press **Refresh**. If it still isn't there, tick "Show games that aren't installed or aren't in the game list". |
+| (App) "launch code guessed" next to a game | It isn't in the app's game list, so Battle.net's product code is used as the launch code. If it doesn't start, find its code (see [Launch codes](#launch-codes)) and open an issue. |
+| (App) "artwork failed" | Check the SteamGridDB API key in Options. You can also set artwork yourself in Steam (right-click the game → Manage). |
+| (App, SteamOS) "isn't in the layout this app can safely rewrite" | Steam's `config.vdf` was left unchanged on purpose. Set each new shortcut's Proton version yourself: Properties → Compatibility. |
+| (App, SteamOS) "Not found in any Proton prefix" | Press **Install Battle.net**, or if you installed it another way, make sure it's inside a Steam Proton prefix (`steamapps/compatdata/<id>/pfx`). |
 | Blank Steam entry, nothing launches | You added the script directly as Target — add `conhost.exe` (Win) or the real `Battle.net.exe` (SteamOS), put the script in Launch Options. |
 | "Both parameters are required" in the log | Add the launch code / process name to Launch Options. |
 | Battle.net opens but game doesn't start | Raise `SettleDelay` (try 10-20 on SteamOS). |
@@ -200,7 +283,7 @@ Found a new or changed code? Pull requests are welcome.
 | (SteamOS) Steam Input doesn't work | Set a gamepad layout under Properties → Controller. |
 | (SteamOS) Controller input also navigates Battle.net's UI in the background while playing | Enable "Exit Battle.net after launching a game" in Battle.net's own settings (see Setup step 6). |
 | (SteamOS) Battle.net/status doesn't clear on exit | Check the log for the `wineserver:` line. If it says none was found, the last-resort cleanup was skipped; confirm Launch Options still end in `%command%`. |
-| Steam status stays "In-game" ~10s after quitting | Expected: that's the `RelaunchGrace` window. Lower it, or set `0` if your game never restarts itself. |
+| Steam status stays "In-game" ~10s after quitting | Expected: that's the relaunch grace window. Lower it (`--relaunch-grace` / `-RelaunchGrace`), or set `0` if your game never restarts itself. |
 | (SteamOS) "Could not identify the Proton binary" | Confirm Launch Options still end in `%command%` and weren't edited. |
 
 Exit codes (both): `0` normal, `1` error, `2` game never appeared.

@@ -1,8 +1,10 @@
 # Launch codes
 
-Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work.
+The app fills these in for you. They're listed here for the scripts and for editing a shortcut's Launch Options by hand: pass the code to `--code` (app), `-LaunchCode` or `BNET_LAUNCH_CODE` (scripts) — just the code, e.g. `Fen`, not the whole `--exec` string. Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work.
 
-**Status:** Verified (tested with this script) · Multiple sources · Single source (try it and check the log).
+The app's own copy of this list is [games.json](games.json), which also holds each game's Battle.net product IDs and process names. When adding or changing a game, update both: a test checks that every code in `games.json` appears here.
+
+**Status:** Verified (tested with this app or script) · Multiple sources · Single source (try it and check the log).
 
 Last checked: 2026-10-27.
 

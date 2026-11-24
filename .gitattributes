@@ -3,3 +3,8 @@
 *.sh  text eol=lf
 *.ps1 text eol=lf
 *.md  text eol=lf
+# The app's sources and data too, so diffs stay clean whichever OS edits them.
+*.rs   text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf

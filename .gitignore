@@ -14,3 +14,8 @@ desktop.ini
 # repo, but are ignored here too in case a copy gets run or tested from this folder.
 *.log
 *.lock
+# ...but not Cargo's lock file, which pins the app's dependency versions.
+!Cargo.lock
+
+# Rust build output
+/target
