@@ -1,8 +1,6 @@
 //! Process lookups. Game and Battle.net processes are described by their Windows exe path, on
 //! Windows natively and on Linux as seen through Wine.
 
-use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-
 #[derive(Clone, Debug)]
 pub struct Proc {
     pub pid: u32,
@@ -12,68 +10,137 @@ pub struct Proc {
     pub path: Option<String>,
 }
 
-/// A process list with only what's asked for (reading every process's command line is far
-/// slower than its name), or None if the OS wouldn't give one (then nothing is found).
-fn system(which: ProcessesToUpdate, kind: ProcessRefreshKind) -> Option<System> {
-    let mut sys = System::new().ok()?;
-    sys.refresh_processes_specifics(which, true, kind);
-    Some(sys)
+/// Windows: calls `f(pid, exe file name)` for every process, from one Toolhelp snapshot, until
+/// it returns false. This reads only the kernel's process list, so it's cheap and also sees
+/// protected processes.
+#[cfg(windows)]
+fn each_process(mut f: impl FnMut(u32, String) -> bool) {
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+        TH32CS_SNAPPROCESS,
+    };
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap == INVALID_HANDLE_VALUE {
+            return;
+        }
+        let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snap, &mut entry) != 0;
+        while more {
+            let name = &entry.szExeFile;
+            let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+            if !f(entry.th32ProcessID, String::from_utf16_lossy(&name[..len])) {
+                break;
+            }
+            more = Process32NextW(snap, &mut entry) != 0;
+        }
+        CloseHandle(snap);
+    }
+}
+
+/// Windows: a process's full exe path, or None if it can't be opened (protected, elevated, or
+/// gone).
+#[cfg(windows)]
+fn exe_path(pid: u32) -> Option<String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+        QueryFullProcessImageNameW,
+    };
+    unsafe {
+        let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if h.is_null() {
+            return None;
+        }
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, buf.as_mut_ptr(), &mut len);
+        CloseHandle(h);
+        (ok != 0).then(|| String::from_utf16_lossy(&buf[..len as usize]))
+    }
+}
+
+/// Linux: the IDs of all processes.
+#[cfg(not(windows))]
+fn pids() -> impl Iterator<Item = u32> {
+    std::fs::read_dir("/proc")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| e.file_name().to_str()?.parse().ok())
 }
 
 /// Whether any native process has one of these names (case-insensitive).
+#[cfg(windows)]
 pub fn any_named(names: &[&str]) -> bool {
-    let Some(sys) = system(ProcessesToUpdate::All, ProcessRefreshKind::nothing()) else {
-        return false;
-    };
-    sys.processes().values().any(|p| {
-        names
-            .iter()
-            .any(|n| p.name().to_string_lossy().eq_ignore_ascii_case(n))
+    let mut found = false;
+    each_process(|_, name| {
+        found = names.iter().any(|n| name.eq_ignore_ascii_case(n));
+        !found
+    });
+    found
+}
+
+/// Whether any native process has one of these names (case-insensitive).
+#[cfg(not(windows))]
+pub fn any_named(names: &[&str]) -> bool {
+    pids().any(|pid| {
+        std::fs::read_to_string(format!("/proc/{pid}/comm")).is_ok_and(|comm| {
+            names
+                .iter()
+                .any(|n| comm.trim_end().eq_ignore_ascii_case(n))
+        })
     })
 }
 
-/// Whether `pid` is alive and its name or command line mentions `needle`.
+/// Whether `pid` is alive and its exe path (Windows) or command line (Linux) mentions `needle`.
+#[cfg(windows)]
 pub fn pid_mentions(pid: u32, needle: &str) -> bool {
-    let pids = [sysinfo::Pid::from_u32(pid)];
-    let kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
-    let Some(sys) = system(ProcessesToUpdate::Some(&pids), kind) else {
-        return false;
-    };
-    let Some(p) = sys.process(sysinfo::Pid::from_u32(pid)) else {
-        return false;
-    };
     let needle = needle.to_ascii_lowercase();
-    let mentions = |s: &std::ffi::OsStr| s.to_string_lossy().to_ascii_lowercase().contains(&needle);
-    is_alive(pid) && (mentions(p.name()) || p.cmd().iter().any(|a| mentions(a)))
+    is_alive(pid) && exe_path(pid).is_some_and(|p| p.to_ascii_lowercase().contains(&needle))
+}
+
+/// Whether `pid` is alive and its exe path (Windows) or command line (Linux) mentions `needle`.
+#[cfg(not(windows))]
+pub fn pid_mentions(pid: u32, needle: &str) -> bool {
+    let needle = needle.to_ascii_lowercase();
+    is_alive(pid)
+        && std::fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|raw| {
+            String::from_utf8_lossy(&raw)
+                .to_ascii_lowercase()
+                .contains(&needle)
+        })
 }
 
 /// Whether a process with this ID exists, from the process list. Unlike `is_alive`, this works
 /// for protected processes (some games with anti-cheat) that can't be opened.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg(windows)]
 fn listed(pid: u32) -> bool {
-    let pids = [sysinfo::Pid::from_u32(pid)];
-    system(
-        ProcessesToUpdate::Some(&pids),
-        ProcessRefreshKind::nothing(),
-    )
-    .is_some_and(|sys| sys.process(pids[0]).is_some())
+    let mut found = false;
+    each_process(|p, _| {
+        found = p == pid;
+        !found
+    });
+    found
 }
 
 /// Windows: every process (exe paths are readable for all but protected/elevated ones).
 #[cfg(windows)]
 pub fn snapshot() -> Vec<Proc> {
-    let kind = ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet);
-    let Some(sys) = system(ProcessesToUpdate::All, kind) else {
-        return Vec::new();
-    };
-    sys.processes()
-        .values()
-        .map(|p| Proc {
-            pid: p.pid().as_u32(),
-            name: p.name().to_string_lossy().to_ascii_lowercase(),
-            path: p.exe().map(|e| normalize(&e.to_string_lossy())),
-        })
-        .collect()
+    let mut out = Vec::new();
+    each_process(|pid, name| {
+        // 0 is the idle process and 4 the kernel ("System"): neither has an exe to read.
+        let path = (pid > 4).then(|| exe_path(pid)).flatten();
+        out.push(Proc {
+            pid,
+            name: name.to_ascii_lowercase(),
+            path: path.map(|p| normalize(&p)),
+        });
+        true
+    });
+    out
 }
 
 /// Linux: only real Windows-side processes running under Wine. Every Linux process in Steam's
@@ -82,14 +149,8 @@ pub fn snapshot() -> Vec<Proc> {
 #[cfg(not(windows))]
 pub fn snapshot() -> Vec<Proc> {
     let mut out = Vec::new();
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return out;
-    };
-    for entry in entries.flatten() {
-        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
-            continue;
-        };
-        let Ok(raw) = std::fs::read(entry.path().join("cmdline")) else {
+    for pid in pids() {
+        let Ok(raw) = std::fs::read(format!("/proc/{pid}/cmdline")) else {
             continue;
         };
         let line = String::from_utf8_lossy(&raw).replace('\0', " ");

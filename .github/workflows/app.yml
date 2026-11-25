@@ -53,10 +53,13 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+      # The app's "Update now" checks its download against this before using it.
+      - name: Checksums
+        run: sha256sum bnet-launcher-* | tee SHA256SUMS
       - name: Attach binaries to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
-          gh release upload "$GITHUB_REF_NAME" bnet-launcher-* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$GITHUB_REF_NAME" bnet-launcher-* SHA256SUMS --repo "$GITHUB_REPOSITORY" --clobber

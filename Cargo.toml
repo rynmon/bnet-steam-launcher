@@ -17,11 +17,11 @@ dirs = "7.0.0"
 eframe = { version = "0.37.0", default-features = false, features = ["default_fonts", "glow", "wayland", "x11", "accesskit"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["preserve_order"] }
-sysinfo = { version = "0.40.4", default-features = false, features = ["system"] }
+sha2 = { version = "0.11.1", default-features = false }
 
 [target."cfg(windows)".dependencies]
 mslnk = "0.1.8"
-windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Console", "Win32_System_Threading", "Win32_System_SystemInformation"] }
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_Console", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_System_SystemInformation"] }
 winreg = "0.56.0"
 
 [target."cfg(windows)".build-dependencies]
@@ -35,3 +35,5 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+# Nothing recovers from a panic, so skip the unwinding code.
+panic = "abort"

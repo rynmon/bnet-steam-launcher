@@ -709,27 +709,25 @@ mod tests {
         std::fs::remove_file(&lock).unwrap();
     }
 
-    /// How long one process scan takes, with and without command lines:
-    /// cargo test scan_cost -- --ignored --nocapture
+    /// How long one process scan (as done for every game check) and one Steam check take:
+    /// cargo test --release scan_cost -- --ignored --nocapture
     #[test]
     #[ignore]
     fn scan_cost() {
-        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
-        let time = |kind: ProcessRefreshKind| {
+        let time = |f: &dyn Fn()| {
             let start = Instant::now();
-            for _ in 0..10 {
-                let mut sys = System::new().unwrap();
-                sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
+            for _ in 0..20 {
+                f();
             }
-            start.elapsed() / 10
+            start.elapsed() / 20
         };
-        let exe = ProcessRefreshKind::nothing().with_exe(UpdateKind::Always);
-        println!("exe only:      {:?}", time(exe));
+        println!("snapshot:  {:?}", time(&|| drop(procs::snapshot())));
         println!(
-            "exe + cmdline: {:?}",
-            time(exe.with_cmd(UpdateKind::Always))
+            "any_named: {:?}",
+            time(&|| {
+                std::hint::black_box(procs::any_named(&["steam.exe", "steam"]));
+            })
         );
-        println!("names only:    {:?}", time(ProcessRefreshKind::nothing()));
     }
 
     #[test]

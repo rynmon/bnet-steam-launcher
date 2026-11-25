@@ -205,21 +205,25 @@ fn copy_self() -> Result<PathBuf> {
     }
     let dir = target.parent().expect("has a parent");
     std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    if target.exists() {
-        if std::fs::read(&target).ok() == std::fs::read(&current).ok() {
-            return Ok(target);
-        }
-        // Windows can't overwrite a running exe (a game may be running through it right now),
-        // but it can rename one.
-        let old = target.with_extension("old");
-        let _ = std::fs::remove_file(&old);
-        std::fs::rename(&target, &old)
-            .with_context(|| format!("replacing {}", target.display()))?;
+    if target.exists() && std::fs::read(&target).ok() == std::fs::read(&current).ok() {
+        return Ok(target);
     }
     let tmp = target.with_extension("new");
     std::fs::copy(&current, &tmp).with_context(|| format!("copying to {}", tmp.display()))?;
-    std::fs::rename(&tmp, &target).with_context(|| format!("copying to {}", target.display()))?;
+    replace_installed(&tmp, &target)?;
     Ok(target)
+}
+
+/// Moves `new` to `target`, replacing what's there. Windows can't overwrite a running exe (a game
+/// may be running through it right now, or it's this app), but it can rename one, so the current
+/// file is moved aside to `.old` first.
+pub fn replace_installed(new: &Path, target: &Path) -> Result<()> {
+    if target.exists() {
+        let old = target.with_extension("old");
+        let _ = std::fs::remove_file(&old);
+        std::fs::rename(target, &old).with_context(|| format!("replacing {}", target.display()))?;
+    }
+    std::fs::rename(new, target).with_context(|| format!("moving to {}", target.display()))
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -720,5 +724,140 @@ mod tests {
             outdated(&row, &existing("My WoW", &current.launch_options), env),
             None
         );
+    }
+
+    /// A stand-in Battle.net in a Proton prefix whose folder is named `prefix` (a shortcut's
+    /// appid there marks that shortcut as the prefix's owner).
+    fn fake_bnet(prefix: &str) -> BnetEnv {
+        BnetEnv {
+            bnet_exe: PathBuf::from(format!(
+                "/compat/{prefix}/pfx/drive_c/Program Files (x86)/Battle.net/Battle.net.exe"
+            )),
+            product_db: PathBuf::new(),
+            compatdata: Some(PathBuf::from(format!("/compat/{prefix}"))),
+        }
+    }
+
+    /// The whole save, against a Steam folder made up in a temporary directory: add, change
+    /// settings, rename, remove, and the Proton prefix's owner surviving a remove.
+    #[test]
+    fn save_end_to_end() {
+        let root = std::env::temp_dir().join(format!("bnet-launcher-e2e-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let steam = SteamInstall {
+            root: root.join("steam"),
+            flatpak: false,
+        };
+        let path = steam.root.join("userdata/1/config/shortcuts.vdf");
+        let launcher = root.join("bnet-launcher.exe");
+        // Windows shortcuts don't use Battle.net's location; Linux ones need it.
+        let none = fake_bnet("none");
+        let env = Some(&none);
+        let apply = |env: Option<&BnetEnv>, changes: &Changes| {
+            apply(&steam, &path, env, changes, Some(&launcher), false).unwrap()
+        };
+        let ours = || {
+            let mut v: Vec<_> = Shortcuts::load(&path)
+                .unwrap()
+                .entries()
+                .into_iter()
+                .filter(|s| s.is_ours())
+                .collect();
+            v.sort_by(|a, b| a.name.cmp(&b.name));
+            v
+        };
+
+        // A shortcut the user made themselves, already in the file.
+        let mut s = Shortcuts::load(&path).unwrap();
+        s.upsert(&steam::NewShortcut {
+            name: "Some Other Game".into(),
+            code: String::new(),
+            exe: "\"C:\\Games\\other.exe\"".into(),
+            start_dir: "\"C:\\Games\\\"".into(),
+            icon: String::new(),
+            launch_options: String::new(),
+            old_names: Vec::new(),
+        });
+        s.save(&path).unwrap();
+
+        // Add two games.
+        let wow = wowf();
+        let mut hs = wowf();
+        (hs.name, hs.code, hs.processes, hs.game_dirs) = (
+            "Hearthstone".into(),
+            "WTCG".into(),
+            vec!["Hearthstone".into()],
+            Vec::new(),
+        );
+        let applied = apply(
+            env,
+            &Changes {
+                add: vec![&wow, &hs],
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            applied.lines,
+            ["Added World of Warcraft: Forever", "Added Hearthstone"]
+        );
+        let added = ours();
+        assert_eq!(added.len(), 2);
+        let wow_id = added[1].appid;
+        assert_eq!(added[1].launch_options, run_args(&wow));
+        assert_eq!(added[1].exe, quoted_path(&launcher));
+        assert_eq!(applied.added[0], (wow_id, wow.name.clone()));
+
+        // Change a game's settings: the same shortcut is rewritten in place.
+        let mut slow = wow.clone();
+        slow.settings.startup_wait = Some(300);
+        apply(
+            env,
+            &Changes {
+                update: vec![&slow],
+                ..Default::default()
+            },
+        );
+        let updated = ours();
+        assert_eq!(updated.len(), 2);
+        assert_eq!(updated[1].appid, wow_id, "kept its ID (artwork, layout)");
+        assert!(updated[1].launch_options.ends_with("--startup-wait 300"));
+
+        // Remove one: the other and the user's own shortcut stay.
+        let applied = apply(
+            env,
+            &Changes {
+                remove: vec![&hs],
+                ..Default::default()
+            },
+        );
+        assert_eq!(applied.lines, ["Removed Hearthstone"]);
+        assert_eq!(ours().len(), 1);
+        let all = Shortcuts::load(&path).unwrap().entries();
+        assert!(all.iter().any(|s| s.name == "Some Other Game"));
+
+        // The shortcut whose Proton prefix holds Battle.net is never removed.
+        let owner = fake_bnet(&wow_id.to_string());
+        let applied = apply(
+            Some(&owner),
+            &Changes {
+                remove: vec![&wow],
+                ..Default::default()
+            },
+        );
+        assert!(
+            applied.lines[0].starts_with("Kept World of Warcraft"),
+            "{:?}",
+            applied.lines
+        );
+        assert_eq!(ours().len(), 1);
+
+        // Every save left a backup of the file it replaced.
+        let backups = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name() != "shortcuts.vdf")
+            .count();
+        assert_eq!(backups, 4);
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }

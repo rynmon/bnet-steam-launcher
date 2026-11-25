@@ -61,7 +61,9 @@ After the first run the app is in the application menu as **bnet-steam-launcher*
   - **Uninstall…** — see below.
 ### Updating
 
-When a new version is out, the window says so. Download it, open it, and press **Save to Steam** — the footer shows **Update N** for the shortcuts it refreshes. That replaces the installed copy the shortcuts run and rewrites their launch options for the new version.
+When a new version is out, the window says so. Press **Update now**: the app downloads it from GitHub, checks it against the release's published SHA-256 checksums (`SHA256SUMS`), replaces the installed copy the shortcuts run, and reopens. If the footer then shows **Update N**, press **Save to Steam** so those shortcuts get the new version's launch options.
+
+You can also update by hand: download the new version, open it, and press **Save to Steam**.
 
 ### Uninstalling
 
