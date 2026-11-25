@@ -181,15 +181,11 @@ fn list(args: &AccountArgs) -> Result<()> {
     let account = pick_account(&steam, args.account)?;
     println!("Shortcuts in account {}:", account.id);
     for s in steam::Shortcuts::load(&account.shortcuts_path())?.entries() {
-        let kind = if s.is_ours() {
-            "app"
-        } else if s.is_legacy() {
-            "old script"
-        } else {
+        if !s.is_ours() {
             continue;
-        };
+        }
         println!(
-            "  {} [{}] ({kind}): {}",
+            "  {} [{}]: {}",
             s.name,
             s.launch_code().unwrap_or_default(),
             s.launch_options

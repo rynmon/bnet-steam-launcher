@@ -173,12 +173,6 @@ impl App {
         self.ours(row).is_some()
     }
 
-    fn has_legacy(&self, row: &GameRow) -> bool {
-        setup::shortcuts_for(row, &self.shortcuts)
-            .iter()
-            .any(|s| s.is_legacy())
-    }
-
     /// Why a game's shortcut needs rewriting, if it does.
     fn outdated(&self, row: &GameRow) -> Option<&'static str> {
         let existing = self.ours(row)?;
@@ -685,7 +679,7 @@ impl App {
         for i in indices {
             let row = self.rows[i].clone();
             let key = row.key();
-            let (ours, legacy) = (self.ours(&row).cloned(), self.has_legacy(&row));
+            let ours = self.ours(&row).cloned();
             let outdated = self.outdated(&row);
             let mut want = self.wanted.get(&key).copied().unwrap_or(false);
             ui.horizontal(|ui| {
@@ -711,22 +705,21 @@ impl App {
                 };
                 ui.colored_label(color, text).on_hover_text(hint);
             });
-            let note = match (ours.is_some(), want, legacy, row.installed) {
-                (true, true, _, _) => Some(match (outdated, &ours) {
-                    (Some("rename"), Some(s)) => format!("In Steam - will be renamed from \"{}\"", s.name),
-                    (Some("settings"), _) => "In Steam - will be updated with the new settings".to_string(),
-                    (Some(_), _) => "In Steam - will be updated to this version of the app".to_string(),
+            let note = match (ours.is_some(), want, row.installed) {
+                (true, true, _) => Some(match (outdated, &ours) {
+                    (Some("rename"), Some(s)) => {
+                        format!("In Steam - will be renamed from \"{}\"", s.name)
+                    }
+                    (Some("settings"), _) => {
+                        "In Steam - will be updated with the new settings".to_string()
+                    }
+                    (Some(_), _) => {
+                        "In Steam - will be updated to this version of the app".to_string()
+                    }
                     _ => "In Steam".to_string(),
                 }),
-                (true, false, _, _) => Some("Will be removed from Steam".into()),
-                (false, true, true, _) => Some(
-                    "Will replace the shortcut made with the old script (keeping its name and artwork)"
-                        .into(),
-                ),
-                (false, false, true, _) => {
-                    Some("In Steam through the old script - tick to switch it to this app".into())
-                }
-                (false, true, false, false) => {
+                (true, false, _) => Some("Will be removed from Steam".into()),
+                (false, true, false) => {
                     Some("Not detected as installed - it will be added anyway".into())
                 }
                 _ => None,

@@ -260,7 +260,7 @@ pub fn shortcut_appid(exe: &str, name: &str) -> u32 {
 #[derive(Clone, Debug)]
 pub struct NewShortcut {
     pub name: String,
-    /// Launch code, used to find a shortcut made with the old scripts for the same game.
+    /// Launch code, used to find our shortcut for the same game after the user renamed it.
     pub code: String,
     /// Already quoted, as Steam stores it.
     pub exe: String,
@@ -287,25 +287,16 @@ impl ShortcutInfo {
         self.exe.contains(needle) || self.launch_options.contains(needle)
     }
 
-    /// Whether this shortcut launches through the older start-bnet-game.ps1 / .sh scripts.
     /// The "Battle.net" shortcut this app made to run Battle.net's installer under Proton.
     pub fn is_installer(&self) -> bool {
         self.exe.contains(crate::EXE_STEM) && self.exe.contains(crate::setup::INSTALLER_NAME)
     }
 
-    pub fn is_legacy(&self) -> bool {
-        !self.is_ours() && self.launch_options.contains("start-bnet-game")
-    }
-
-    /// The launch code from our launch options (`--code X`) or the old scripts' (`-LaunchCode X`,
-    /// `BNET_LAUNCH_CODE=X`).
+    /// The launch code from our launch options (`--code X`).
     pub fn launch_code(&self) -> Option<String> {
         let mut words = self.launch_options.split_whitespace();
         while let Some(w) = words.next() {
-            if let Some(code) = w.strip_prefix("BNET_LAUNCH_CODE=") {
-                return Some(code.trim_matches('"').to_string());
-            }
-            if w == "--code" || w.eq_ignore_ascii_case("-LaunchCode") {
+            if w == "--code" {
                 return words.next().map(|c| c.trim_matches('"').to_string());
             }
         }
@@ -359,8 +350,8 @@ impl Shortcuts {
             .collect()
     }
 
-    /// Adds a shortcut, or updates one in place: ours with the same name, or one made with the
-    /// old scripts for the same launch code (that one keeps its name). Updating in place keeps the
+    /// Adds a shortcut, or updates ours for the same game (same name or launch code; a name the
+    /// user chose is kept) in place. Updating in place keeps the
     /// shortcut's ID, so its artwork, controller layout and Proton prefix stay attached.
     /// Returns the ID.
     pub fn upsert(&mut self, s: &NewShortcut) -> u32 {
@@ -371,9 +362,8 @@ impl Shortcuts {
                 let same_code = i
                     .launch_code()
                     .is_some_and(|c| c.eq_ignore_ascii_case(&s.code));
-                // Ours by name or code (the user may have renamed it), or an old script's by code.
-                let same_game = (i.is_ours() && (i.name == s.name || same_code))
-                    || (i.is_legacy() && same_code);
+                // By name or code (the user may have renamed it).
+                let same_game = i.is_ours() && (i.name == s.name || same_code);
                 same_game.then_some(m)
             }
             _ => None,
@@ -680,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn converts_script_shortcut_in_place() {
+    fn update_keeps_users_name_and_icon() {
         let mut s = Shortcuts {
             root: Map::default(),
         };
@@ -688,15 +678,11 @@ mod tests {
         old.set("appid", Value::Int(-1_000));
         old.set("AppName", str_val("World of Warcraft: Forever"));
         old.set("icon", str_val("c:/steam/grid/1_icon.png"));
-        old.set("Exe", str_val(r#""C:\Windows\System32\conhost.exe""#));
-        old.set(
-            "LaunchOptions",
-            str_val(r#"--headless powershell.exe -File "C:\x\start-bnet-game.ps1" -LaunchCode WoWF -GameProcess Wow"#),
-        );
+        old.set("Exe", str_val(r#""C:\bnet-launcher.exe""#));
+        old.set("LaunchOptions", str_val("run --code WoWF --process WowB"));
         let mut list = Map::default();
         list.0.push((b"0".to_vec(), Value::Map(old)));
         s.root.set("shortcuts", Value::Map(list));
-        assert!(s.entries()[0].is_legacy());
 
         let id = s.upsert(&sample());
         assert_eq!(id, -1_000i32 as u32, "keeps the old shortcut's ID");

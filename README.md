@@ -59,8 +59,6 @@ After the first run the app is in the application menu as **bnet-steam-launcher*
   - **Check for new versions** — the window shows a link when a newer release is out. It only asks GitHub for the latest release; nothing about you is sent.
   - **Open launch log** and **Copy details for a bug report** — for when something goes wrong.
   - **Uninstall…** — see below.
-- **Shortcuts made with the old scripts** (`start-bnet-game.ps1` / `.sh`, from before 1.0) are recognised: tick the game and save, and the shortcut is switched to the app in place, keeping its name, artwork, controller layout and Proton prefix.
-
 ### Updating
 
 When a new version is out, the window says so. Download it, open it, and press **Save to Steam** — the footer shows **Update N** for the shortcuts it refreshes. That replaces the installed copy the shortcuts run and rewrites their launch options for the new version.

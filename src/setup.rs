@@ -107,9 +107,6 @@ pub fn install_self() -> Result<PathBuf> {
 /// The name the app is listed under in the Start menu / application menu (the project's name, so
 /// searching "bnet" or "steam launcher" finds it).
 const MENU_NAME: &str = "bnet-steam-launcher";
-/// What 1.0 betas called the Start menu shortcut; removed when the new one is made.
-#[cfg(windows)]
-const OLD_MENU_NAME: &str = "Battle.net games for Steam";
 
 /// Windows: a Start menu shortcut, so searching the Start menu finds the app. It goes in the
 /// user's own Start menu folder, so no admin rights are needed.
@@ -128,7 +125,6 @@ pub fn install_menu_entry(exe: &Path) -> Result<()> {
     }
     link.set_icon_location(Some(exe.display().to_string()));
     link.create_lnk(programs.join(format!("{MENU_NAME}.lnk")))?;
-    let _ = std::fs::remove_file(programs.join(format!("{OLD_MENU_NAME}.lnk")));
     Ok(())
 }
 
@@ -138,10 +134,7 @@ fn menu_entry_files() -> Vec<PathBuf> {
     else {
         return Vec::new();
     };
-    [MENU_NAME, OLD_MENU_NAME]
-        .iter()
-        .map(|n| programs.join(format!("{n}.lnk")))
-        .collect()
+    vec![programs.join(format!("{MENU_NAME}.lnk"))]
 }
 
 #[cfg(not(windows))]
@@ -335,11 +328,11 @@ pub fn prefix_owner(env: Option<&BnetEnv>) -> Option<u32> {
 
 // --- Applying changes -------------------------------------------------------------------------
 
-/// Shortcuts that belong to a game row: ours, and ones made with the old scripts.
+/// Our shortcuts for a game row.
 pub fn shortcuts_for<'a>(row: &GameRow, all: &'a [ShortcutInfo]) -> Vec<&'a ShortcutInfo> {
     all.iter()
         .filter(|s| {
-            (s.is_ours() || s.is_legacy())
+            s.is_ours()
                 && s.launch_code()
                     .is_some_and(|c| c.eq_ignore_ascii_case(&row.code))
         })
@@ -443,28 +436,19 @@ pub fn apply(
             report.push(format!("Updated {}", row.name));
         }
         for row in &changes.add {
-            let before = shortcuts.entries();
-            let converted = shortcuts_for(row, &before).iter().any(|s| s.is_legacy());
             let shortcut = build_shortcut(row, &launcher, env)?;
             let appid = shortcuts.upsert(&shortcut);
             added.push((appid, row.name.clone()));
             if !cfg!(windows) && steam::compat_tool(&steam.config_vdf(), appid).is_none() {
                 compat_changes.push((appid, Some(tool.clone())));
             }
-            report.push(if converted {
-                format!("Switched {} from the old script to the app", row.name)
-            } else {
-                format!("Added {}", row.name)
-            });
+            report.push(format!("Added {}", row.name));
         }
     }
 
     for row in &changes.remove {
         let entries = shortcuts.entries();
-        for s in shortcuts_for(row, &entries)
-            .into_iter()
-            .filter(|s| s.is_ours())
-        {
+        for s in shortcuts_for(row, &entries) {
             if Some(s.appid) == owner {
                 report.push(format!(
                     "Kept {}: its shortcut holds the Proton prefix Battle.net is installed in, so removing it could delete Battle.net and your games",
