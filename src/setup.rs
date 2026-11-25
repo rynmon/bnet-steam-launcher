@@ -803,8 +803,11 @@ mod tests {
         let added = ours();
         assert_eq!(added.len(), 2);
         let wow_id = added[1].appid;
-        assert_eq!(added[1].launch_options, run_args(&wow));
-        assert_eq!(added[1].exe, quoted_path(&launcher));
+        // Windows runs the launcher directly; Linux runs Battle.net through Proton, wrapped by it.
+        let expected = build_shortcut(&wow, &launcher, env).unwrap();
+        assert_eq!(added[1].launch_options, expected.launch_options);
+        assert_eq!(added[1].exe, expected.exe);
+        assert!(added[1].launch_options.contains(&run_args(&wow)));
         assert_eq!(applied.added[0], (wow_id, wow.name.clone()));
 
         // Change a game's settings: the same shortcut is rewritten in place.
@@ -820,7 +823,7 @@ mod tests {
         let updated = ours();
         assert_eq!(updated.len(), 2);
         assert_eq!(updated[1].appid, wow_id, "kept its ID (artwork, layout)");
-        assert!(updated[1].launch_options.ends_with("--startup-wait 300"));
+        assert!(updated[1].launch_options.contains("--startup-wait 300"));
 
         // Remove one: the other and the user's own shortcut stay.
         let applied = apply(
