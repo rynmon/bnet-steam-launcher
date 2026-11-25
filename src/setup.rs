@@ -692,50 +692,49 @@ mod tests {
     fn outdated_shortcuts() {
         let row = wowf();
         let launcher = installed_exe_path().unwrap();
-        let current = build_shortcut(&row, &launcher, None).unwrap();
+        // Linux shortcuts target Battle.net inside a Proton prefix, so give it a stand-in one.
+        let prefix = BnetEnv {
+            bnet_exe: PathBuf::from("/p/pfx/drive_c/Program Files (x86)/Battle.net/Battle.net.exe"),
+            product_db: PathBuf::new(),
+            compatdata: Some(PathBuf::from("/p")),
+        };
+        let env = (!cfg!(windows)).then_some(&prefix);
+        let current = build_shortcut(&row, &launcher, env).unwrap();
         let existing = |name: &str, launch_options: &str| ShortcutInfo {
             appid: 1,
             name: name.into(),
             exe: current.exe.clone(),
             launch_options: launch_options.into(),
         };
-        if cfg!(windows) {
-            // Only Windows can build a shortcut without a Battle.net prefix.
-            assert_eq!(
-                outdated(&row, &existing(&row.name, &current.launch_options), None),
-                None
-            );
-            assert_eq!(
-                outdated(
-                    &row,
-                    &existing(&row.name, "run --code WoWF --process Wow"),
-                    None
-                ),
-                Some("settings")
-            );
-            let mut changed = row.clone();
-            changed.settings.startup_wait = Some(300);
-            assert_eq!(
-                outdated(
-                    &changed,
-                    &existing(&row.name, &current.launch_options),
-                    None
-                ),
-                Some("settings")
-            );
-        }
+
+        assert_eq!(
+            outdated(&row, &existing(&row.name, &current.launch_options), env),
+            None
+        );
         assert_eq!(
             outdated(
                 &row,
-                &existing("WoW Forever", &current.launch_options),
-                None
+                &existing(&row.name, "run --code WoWF --process Wow"),
+                env
             ),
+            Some("settings"),
+            "made by an older version"
+        );
+        let mut changed = row.clone();
+        changed.settings.startup_wait = Some(300);
+        assert_eq!(
+            outdated(&changed, &existing(&row.name, &current.launch_options), env),
+            Some("settings"),
+            "advanced settings changed"
+        );
+        assert_eq!(
+            outdated(&row, &existing("WoW Forever", &current.launch_options), env),
             Some("rename")
         );
         // A name the user picked isn't an old default, so it's kept.
-        assert_ne!(
-            outdated(&row, &existing("My WoW", &current.launch_options), None),
-            Some("rename")
+        assert_eq!(
+            outdated(&row, &existing("My WoW", &current.launch_options), env),
+            None
         );
     }
 }
