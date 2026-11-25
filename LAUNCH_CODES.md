@@ -1,10 +1,10 @@
 # Launch codes
 
-The app fills these in for you. They're listed here for the scripts and for editing a shortcut's Launch Options by hand: pass the code to `--code` (app), `-LaunchCode` or `BNET_LAUNCH_CODE` (scripts) — just the code, e.g. `Fen`, not the whole `--exec` string. Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work.
+The app fills these in for you. They're listed here for reference, and for editing a shortcut's Launch Options by hand: pass the code to `--code` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the launch log if one doesn't work.
 
 The app's own copy of this list is [games.json](games.json), which also holds each game's Battle.net product IDs and process names. When adding or changing a game, update both: a test checks that every code in `games.json` appears here.
 
-**Status:** Verified (tested with this app or script) · Multiple sources · Single source (try it and check the log).
+**Status:** Verified (tested with this app) · Multiple sources · Single source (try it and check the log).
 
 Last checked: 2026-10-27.
 
@@ -12,7 +12,7 @@ Last checked: 2026-10-27.
 
 | Game | Code | Status | Notes |
 |---|---|---|---|
-| World of Warcraft: Forever | `WoWF` | Verified | Tested with the app on Windows and SteamOS. Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
+| World of Warcraft: Forever | `WoWF` | Verified | Tested with the app on Windows and SteamOS. Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`); the app watches for both. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play in Battle.net yourself and raise the game's startup wait and retry interval to 300 in the app's Advanced settings. |
 | World of Warcraft | `WoW` | Multiple sources | |
 | World of Warcraft Classic | `WoWC` | Multiple sources | All versions: the one launched is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Single source | Includes Hellfire. |
@@ -62,7 +62,7 @@ Last checked: 2026-10-27.
 ### Caveats
 
 - Only World of Warcraft: Forever has been tested; every other code is from the sources below.
-- A code may open the game's page instead of starting it — the script will time out and exit with code `2`.
+- A code may open the game's page instead of starting it — the launcher then gives up after the startup wait and shows an error.
 - Not every game supports the Steam overlay (some Call of Duty titles have reported issues) or is confirmed to run under Proton (check ProtonDB).
 
 ### Sources

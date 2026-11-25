@@ -10,12 +10,9 @@ desktop.ini
 *~
 *.bak
 
-# Script runtime artifacts - these normally live in %TEMP% / $XDG_RUNTIME_DIR, not the
-# repo, but are ignored here too in case a copy gets run or tested from this folder.
+# Launcher logs normally live in %TEMP% / $XDG_RUNTIME_DIR, but are ignored here in case a
+# copy gets run from this folder.
 *.log
-*.lock
-# ...but not Cargo's lock file, which pins the app's dependency versions.
-!Cargo.lock
 
 # Rust build output
 /target

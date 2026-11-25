@@ -1,10 +1,7 @@
-# Force LF line endings for the scripts regardless of platform or editor settings.
-# A CRLF-saved .sh file breaks on Linux with "bash: ...: /bin/bash^M: bad interpreter".
-*.sh  text eol=lf
-*.ps1 text eol=lf
-*.md  text eol=lf
-# The app's sources and data too, so diffs stay clean whichever OS edits them.
+# LF line endings for the sources and docs, whichever OS edits them, so diffs stay clean.
 *.rs   text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
 *.yml  text eol=lf
+*.md   text eol=lf
+*.py   text eol=lf
