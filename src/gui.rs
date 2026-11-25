@@ -86,7 +86,8 @@ struct App {
     /// A newer release on GitHub: (version, page URL).
     newer: Option<(String, String)>,
     update_check: Option<Receiver<Option<(String, String)>>>,
-    confirm: Option<Action>,
+    /// An action waiting for the user's OK, and whether Steam was running when it was asked.
+    confirm: Option<(Action, bool)>,
     working: Option<Receiver<Result<Vec<String>, String>>>,
     result: Option<Result<Vec<String>, String>>,
 }
@@ -211,8 +212,9 @@ impl App {
             Action::InstallBnet => !cfg!(windows),
             Action::Uninstall => true,
         };
-        if action == Action::Uninstall || (needs_steam_closed && SteamInstall::is_running()) {
-            self.confirm = Some(action);
+        let steam_running = needs_steam_closed && SteamInstall::is_running();
+        if action == Action::Uninstall || steam_running {
+            self.confirm = Some((action, steam_running));
         } else {
             self.run(action, false);
         }
@@ -460,11 +462,18 @@ impl eframe::App for App {
                     .request_repaint_after(std::time::Duration::from_millis(200)),
             }
         }
-        if let Some(rx) = &self.update_check
-            && let Ok(newer) = rx.try_recv()
-        {
-            self.newer = newer;
-            self.update_check = None;
+        if let Some(rx) = &self.update_check {
+            match rx.try_recv() {
+                Ok(newer) => {
+                    self.newer = newer;
+                    self.update_check = None;
+                }
+                // The window only redraws on input otherwise, so the notice could sit unseen.
+                Err(std::sync::mpsc::TryRecvError::Empty) => ui
+                    .ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500)),
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.update_check = None,
+            }
         }
 
         egui::Panel::top("top").show(ui, |ui| {
@@ -515,15 +524,14 @@ impl eframe::App for App {
                 });
         });
 
-        if let Some(action) = self.confirm {
-            self.confirm_dialog(ui, action);
+        if let Some((action, steam_running)) = self.confirm {
+            self.confirm_dialog(ui, action, steam_running);
         }
     }
 }
 
 impl App {
-    fn confirm_dialog(&mut self, ui: &mut egui::Ui, action: Action) {
-        let steam_running = SteamInstall::is_running();
+    fn confirm_dialog(&mut self, ui: &mut egui::Ui, action: Action, steam_running: bool) {
         egui::Modal::new(egui::Id::unique("confirm")).show(ui.ctx(), |ui| {
             ui.set_max_width(400.0);
             if action == Action::Uninstall {

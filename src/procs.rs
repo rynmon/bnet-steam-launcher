@@ -12,22 +12,19 @@ pub struct Proc {
     pub path: Option<String>,
 }
 
-/// A process list, or None if the OS wouldn't give one (then nothing is found).
-fn system() -> Option<System> {
+/// A process list with only what's asked for (reading every process's command line is far
+/// slower than its name), or None if the OS wouldn't give one (then nothing is found).
+fn system(which: ProcessesToUpdate, kind: ProcessRefreshKind) -> Option<System> {
     let mut sys = System::new().ok()?;
-    sys.refresh_processes_specifics(
-        ProcessesToUpdate::All,
-        true,
-        ProcessRefreshKind::nothing()
-            .with_exe(UpdateKind::Always)
-            .with_cmd(UpdateKind::Always),
-    );
+    sys.refresh_processes_specifics(which, true, kind);
     Some(sys)
 }
 
 /// Whether any native process has one of these names (case-insensitive).
 pub fn any_named(names: &[&str]) -> bool {
-    let Some(sys) = system() else { return false };
+    let Some(sys) = system(ProcessesToUpdate::All, ProcessRefreshKind::nothing()) else {
+        return false;
+    };
     sys.processes().values().any(|p| {
         names
             .iter()
@@ -37,7 +34,11 @@ pub fn any_named(names: &[&str]) -> bool {
 
 /// Whether `pid` is alive and its name or command line mentions `needle`.
 pub fn pid_mentions(pid: u32, needle: &str) -> bool {
-    let Some(sys) = system() else { return false };
+    let pids = [sysinfo::Pid::from_u32(pid)];
+    let kind = ProcessRefreshKind::nothing().with_cmd(UpdateKind::Always);
+    let Some(sys) = system(ProcessesToUpdate::Some(&pids), kind) else {
+        return false;
+    };
     let Some(p) = sys.process(sysinfo::Pid::from_u32(pid)) else {
         return false;
     };
@@ -46,10 +47,23 @@ pub fn pid_mentions(pid: u32, needle: &str) -> bool {
     is_alive(pid) && (mentions(p.name()) || p.cmd().iter().any(|a| mentions(a)))
 }
 
+/// Whether a process with this ID exists, from the process list. Unlike `is_alive`, this works
+/// for protected processes (some games with anti-cheat) that can't be opened.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn listed(pid: u32) -> bool {
+    let pids = [sysinfo::Pid::from_u32(pid)];
+    system(
+        ProcessesToUpdate::Some(&pids),
+        ProcessRefreshKind::nothing(),
+    )
+    .is_some_and(|sys| sys.process(pids[0]).is_some())
+}
+
 /// Windows: every process (exe paths are readable for all but protected/elevated ones).
 #[cfg(windows)]
 pub fn snapshot() -> Vec<Proc> {
-    let Some(sys) = system() else {
+    let kind = ProcessRefreshKind::nothing().with_exe(UpdateKind::OnlyIfNotSet);
+    let Some(sys) = system(ProcessesToUpdate::All, kind) else {
         return Vec::new();
     };
     sys.processes()
@@ -139,7 +153,8 @@ pub fn is_alive(pid: u32) -> bool {
     unsafe {
         let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
         if h.is_null() {
-            return false;
+            // Can't open it (a protected process, or it's gone): ask the process list instead.
+            return listed(pid);
         }
         let alive = WaitForSingleObject(h, 0) == WAIT_TIMEOUT;
         CloseHandle(h);
@@ -168,6 +183,11 @@ pub fn wait_exit(pid: u32) {
     unsafe {
         let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
         if h.is_null() {
+            // A protected process (some games with anti-cheat) can't be waited on directly:
+            // returning here would look like an instant exit, so poll the process list instead.
+            while listed(pid) {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
             return;
         }
         WaitForSingleObject(h, INFINITE);

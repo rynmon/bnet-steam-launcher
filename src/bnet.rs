@@ -274,19 +274,25 @@ impl BnetEnv {
                     .collect()
             })
             .unwrap_or_default();
-        // Shallow search: games keep their exe at most a couple of folders down.
+        if names.is_empty() {
+            return None;
+        }
+        // Shallow search: games keep their exe at most a couple of folders down. The entry's own
+        // file type avoids a disk lookup per file (game folders can hold thousands).
         let mut dirs = vec![(root, 0)];
         while let Some((dir, depth)) = dirs.pop() {
             let Ok(read) = std::fs::read_dir(&dir) else {
                 continue;
             };
             for entry in read.flatten() {
-                let path = entry.path();
-                let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
-                if path.is_dir() && depth < 2 {
-                    dirs.push((path, depth + 1));
-                } else if names.contains(&name) {
-                    return Some(path);
+                let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+                if is_dir {
+                    if depth < 2 {
+                        dirs.push((entry.path(), depth + 1));
+                    }
+                } else if names.contains(&entry.file_name().to_string_lossy().to_ascii_lowercase())
+                {
+                    return Some(entry.path());
                 }
             }
         }

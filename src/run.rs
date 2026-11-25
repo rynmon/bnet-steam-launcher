@@ -370,19 +370,56 @@ impl Launch {
 
 // --- The run itself ---------------------------------------------------------------------------
 
+/// Claims the lock file, or returns the PID of the run that holds it. Creating the file only if
+/// it doesn't exist makes checking and claiming one step, so two runs started at the same moment
+/// can't both get through. A lock left by a hard-killed run (its PID gone, or reused by some
+/// other program) is cleared and claimed. If the lock can't be written at all, the run goes ahead
+/// unguarded rather than failing.
+fn take_lock(lock: &std::path::Path) -> Result<(), u32> {
+    for _ in 0..3 {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock)
+        {
+            Ok(mut f) => {
+                let _ = write!(f, "{}", std::process::id());
+                return Ok(());
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let holder = std::fs::read_to_string(lock)
+                    .ok()
+                    .and_then(|t| t.trim().parse::<u32>().ok());
+                if let Some(pid) = holder
+                    && pid != std::process::id()
+                    && procs::pid_mentions(pid, crate::EXE_STEM)
+                {
+                    return Err(pid);
+                }
+                // Stale, or still being written by a run that started a moment ago: give that
+                // run a moment, then treat the lock as stale.
+                if holder.is_none() {
+                    std::thread::sleep(Duration::from_millis(200));
+                    if std::fs::read_to_string(lock).is_ok_and(|t| !t.trim().is_empty()) {
+                        continue;
+                    }
+                }
+                let _ = std::fs::remove_file(lock);
+            }
+            Err(_) => return Ok(()),
+        }
+    }
+    Ok(())
+}
+
 pub fn run(args: RunArgs) -> i32 {
     let dir = run_dir();
     let log_file = log_path();
     let lock = dir.join(format!("{}.lock", crate::EXE_STEM));
 
     // Single-instance guard: if another run is going (Play pressed twice), exit before touching
-    // the log so the second run can't rotate away the one the first is still writing. The PID
-    // must still be this app: a lock left by a hard-killed run can name a reused PID.
-    if let Ok(text) = std::fs::read_to_string(&lock)
-        && let Ok(pid) = text.trim().parse::<u32>()
-        && pid != std::process::id()
-        && procs::pid_mentions(pid, crate::EXE_STEM)
-    {
+    // the log so the second run can't rotate away the one the first is still writing.
+    if let Err(pid) = take_lock(&lock) {
         if let Ok(mut f) = std::fs::OpenOptions::new()
             .append(true)
             .create(true)
@@ -409,7 +446,6 @@ pub fn run(args: RunArgs) -> i32 {
         std::env::args().collect::<Vec<_>>().join(" ")
     ));
 
-    let _ = std::fs::write(&lock, std::process::id().to_string());
     *CLEANUP.lock().unwrap() = Some(Cleanup {
         lock,
         started_bnet: false,
@@ -552,7 +588,8 @@ fn launch_and_wait(args: &RunArgs) -> Result<(), Failure> {
              Most likely Battle.net is downloading an update for it: open Battle.net, let the \
              update finish, then press Play in Steam again.\n\n\
              If there's no update, the launch code ({}) may be wrong for this game, or the game \
-             may need longer to start (raise --startup-wait in the shortcut's Launch Options).",
+             may need longer to start: raise its startup wait under Advanced in \
+             bnet-steam-launcher, then save.",
             args.startup_wait, args.code
         )));
     };
@@ -653,6 +690,46 @@ mod tests {
             name: name.into(),
             path: path.map(procs::normalize),
         }
+    }
+
+    #[test]
+    fn stale_lock_is_reclaimed() {
+        let lock =
+            std::env::temp_dir().join(format!("bnet-launcher-test-{}.lock", std::process::id()));
+        // A PID that can't be running, as left behind by a hard-killed run.
+        std::fs::write(&lock, "4294967290").unwrap();
+        assert_eq!(take_lock(&lock), Ok(()));
+        assert_eq!(
+            std::fs::read_to_string(&lock).unwrap(),
+            std::process::id().to_string()
+        );
+        // An empty lock (a crash right after creating it) is reclaimed too.
+        std::fs::write(&lock, "").unwrap();
+        assert_eq!(take_lock(&lock), Ok(()));
+        std::fs::remove_file(&lock).unwrap();
+    }
+
+    /// How long one process scan takes, with and without command lines:
+    /// cargo test scan_cost -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn scan_cost() {
+        use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+        let time = |kind: ProcessRefreshKind| {
+            let start = Instant::now();
+            for _ in 0..10 {
+                let mut sys = System::new().unwrap();
+                sys.refresh_processes_specifics(ProcessesToUpdate::All, true, kind);
+            }
+            start.elapsed() / 10
+        };
+        let exe = ProcessRefreshKind::nothing().with_exe(UpdateKind::Always);
+        println!("exe only:      {:?}", time(exe));
+        println!(
+            "exe + cmdline: {:?}",
+            time(exe.with_cmd(UpdateKind::Always))
+        );
+        println!("names only:    {:?}", time(ProcessRefreshKind::nothing()));
     }
 
     #[test]
