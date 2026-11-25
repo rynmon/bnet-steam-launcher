@@ -545,8 +545,14 @@ fn launch_and_wait(args: &RunArgs) -> Result<(), Failure> {
     }
 
     let Some(mut g) = game else {
+        // A pending patch is by far the most common cause: Battle.net shows "Update" instead of
+        // "Play" and quietly ignores the launch command, so say that first.
         return Err(Failure::NeverAppeared(format!(
-            "The game never appeared within {}s - check the launch code ({}) and process name in the shortcut's Launch Options",
+            "The game didn't start within {}s.\n\n\
+             Most likely Battle.net is downloading an update for it: open Battle.net, let the \
+             update finish, then press Play in Steam again.\n\n\
+             If there's no update, the launch code ({}) may be wrong for this game, or the game \
+             may need longer to start (raise --startup-wait in the shortcut's Launch Options).",
             args.startup_wait, args.code
         )));
     };

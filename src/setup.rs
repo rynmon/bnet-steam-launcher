@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 
 use crate::bnet::{self, BnetEnv};
+use crate::config::{Config, GameSettings};
 use crate::steam::{self, NewShortcut, ShortcutInfo, Shortcuts, SteamInstall};
 
 /// A game that can be added: from the catalog, or an installed game the catalog doesn't know.
@@ -19,6 +20,10 @@ pub struct GameRow {
     pub installed: bool,
     /// "verified", "multiple", "single", or "guessed" (installed but not in the catalog).
     pub status: String,
+    /// Names earlier versions of the app used for this game's shortcut.
+    pub old_names: Vec<String>,
+    /// Launch timings chosen in the window's advanced settings.
+    pub settings: GameSettings,
 }
 
 impl GameRow {
@@ -28,7 +33,7 @@ impl GameRow {
 }
 
 /// Every catalog game plus any installed game the catalog doesn't know; installed ones first.
-pub fn game_rows(env: Option<&BnetEnv>) -> Vec<GameRow> {
+pub fn game_rows(env: Option<&BnetEnv>, config: &Config) -> Vec<GameRow> {
     let installs = env.and_then(|e| e.installs().ok()).unwrap_or_default();
     let catalog = bnet::catalog();
     let mut rows: Vec<GameRow> = catalog
@@ -45,6 +50,8 @@ pub fn game_rows(env: Option<&BnetEnv>) -> Vec<GameRow> {
                 icon: env.and_then(|e| mine.iter().find_map(|i| e.find_game_exe(i, Some(game)))),
                 installed: !mine.is_empty(),
                 status: game.status.clone(),
+                old_names: game.old_names.clone(),
+                settings: config.game(&game.code),
             }
         })
         .collect();
@@ -61,6 +68,8 @@ pub fn game_rows(env: Option<&BnetEnv>) -> Vec<GameRow> {
             icon: None,
             installed: true,
             status: "guessed".into(),
+            old_names: Vec::new(),
+            settings: config.game(&install.product_code),
         });
     }
     rows.sort_by_key(|r| !r.installed);
@@ -95,8 +104,12 @@ pub fn install_self() -> Result<PathBuf> {
     Ok(target)
 }
 
-/// The name the app is listed under in the Start menu / application menu.
-const MENU_NAME: &str = "Battle.net games for Steam";
+/// The name the app is listed under in the Start menu / application menu (the project's name, so
+/// searching "bnet" or "steam launcher" finds it).
+const MENU_NAME: &str = "bnet-steam-launcher";
+/// What 1.0 betas called the Start menu shortcut; removed when the new one is made.
+#[cfg(windows)]
+const OLD_MENU_NAME: &str = "Battle.net games for Steam";
 
 /// Windows: a Start menu shortcut, so searching the Start menu finds the app. It goes in the
 /// user's own Start menu folder, so no admin rights are needed.
@@ -115,7 +128,34 @@ pub fn install_menu_entry(exe: &Path) -> Result<()> {
     }
     link.set_icon_location(Some(exe.display().to_string()));
     link.create_lnk(programs.join(format!("{MENU_NAME}.lnk")))?;
+    let _ = std::fs::remove_file(programs.join(format!("{OLD_MENU_NAME}.lnk")));
     Ok(())
+}
+
+#[cfg(windows)]
+fn menu_entry_files() -> Vec<PathBuf> {
+    let Some(programs) = dirs::data_dir().map(|d| d.join(r"Microsoft\Windows\Start Menu\Programs"))
+    else {
+        return Vec::new();
+    };
+    [MENU_NAME, OLD_MENU_NAME]
+        .iter()
+        .map(|n| programs.join(format!("{n}.lnk")))
+        .collect()
+}
+
+#[cfg(not(windows))]
+fn menu_entry_files() -> Vec<PathBuf> {
+    let Some(data) = dirs::data_dir() else {
+        return Vec::new();
+    };
+    vec![
+        data.join(format!("applications/{}.desktop", crate::EXE_STEM)),
+        data.join(format!(
+            "icons/hicolor/256x256/apps/{}.png",
+            crate::EXE_STEM
+        )),
+    ]
 }
 
 /// Linux: installs the app icon and a `.desktop` entry in the user's own folders. Linux programs
@@ -222,6 +262,9 @@ pub fn run_args(row: &GameRow) -> String {
         parts.push("--game-dir".into());
         parts.push(quote(d));
     }
+    for (option, value) in row.settings.args() {
+        parts.push(format!("{option} {value}"));
+    }
     parts.join(" ")
 }
 
@@ -247,6 +290,7 @@ pub fn build_shortcut(
                 .map(|p| p.display().to_string())
                 .unwrap_or_default(),
             launch_options: run_args(row),
+            old_names: row.old_names.clone(),
         })
     } else {
         // Linux: the target is Battle.net.exe under Proton; this launcher wraps Steam's command.
@@ -273,6 +317,7 @@ pub fn build_shortcut(
                 quote(&launcher.display().to_string()),
                 run_args(row)
             ),
+            old_names: row.old_names.clone(),
         })
     }
 }
@@ -301,9 +346,39 @@ pub fn shortcuts_for<'a>(row: &GameRow, all: &'a [ShortcutInfo]) -> Vec<&'a Shor
         .collect()
 }
 
+#[derive(Default)]
 pub struct Changes<'a> {
     pub add: Vec<&'a GameRow>,
+    /// Games already in Steam whose shortcut should be rewritten (see `outdated`).
+    pub update: Vec<&'a GameRow>,
     pub remove: Vec<&'a GameRow>,
+}
+
+/// Whether the installed copy the shortcuts run is a different build from this one (an update
+/// was downloaded). Saving replaces it.
+pub fn installed_copy_outdated() -> bool {
+    let (Ok(installed), Ok(current)) = (installed_exe_path(), std::env::current_exe()) else {
+        return false;
+    };
+    installed.is_file()
+        && !same_file(&installed, &current)
+        && std::fs::read(&installed).ok() != std::fs::read(&current).ok()
+}
+
+/// Why a game's existing shortcut (made by this app) should be rewritten, if it should: it was
+/// made by an older version, its settings changed, or it still has an old default name.
+pub fn outdated(
+    row: &GameRow,
+    existing: &ShortcutInfo,
+    env: Option<&BnetEnv>,
+) -> Option<&'static str> {
+    if row.old_names.contains(&existing.name) {
+        return Some("rename");
+    }
+    let launcher = installed_exe_path().ok()?;
+    let expected = build_shortcut(row, &launcher, env).ok()?;
+    (expected.launch_options != existing.launch_options || expected.exe != existing.exe)
+        .then_some("settings")
 }
 
 /// What `apply` did: a line per change for the user, and the shortcuts it added or updated
@@ -354,7 +429,7 @@ pub fn apply(
         );
     }
 
-    if !changes.add.is_empty() {
+    if !changes.add.is_empty() || !changes.update.is_empty() {
         let launcher = match launcher {
             Some(l) => l.to_path_buf(),
             None => install_self()?,
@@ -363,6 +438,10 @@ pub fn apply(
         let tool = owner
             .and_then(|o| steam::compat_tool(&steam.config_vdf(), o))
             .unwrap_or_else(|| steam.best_proton());
+        for row in &changes.update {
+            shortcuts.upsert(&build_shortcut(row, &launcher, env)?);
+            report.push(format!("Updated {}", row.name));
+        }
         for row in &changes.add {
             let before = shortcuts.entries();
             let converted = shortcuts_for(row, &before).iter().any(|s| s.is_legacy());
@@ -454,10 +533,112 @@ pub fn add_bnet_installer(steam: &SteamInstall, shortcuts_path: &Path) -> Result
         start_dir: quoted_path(installer.parent().expect("has a parent")),
         icon: String::new(),
         launch_options: String::new(),
+        old_names: Vec::new(),
     });
     shortcuts.save(shortcuts_path)?;
     steam::set_compat_tools(&steam.config_vdf(), &[(appid, Some(steam.best_proton()))])?;
     Ok(appid)
+}
+
+// --- Uninstalling ------------------------------------------------------------------------------
+
+/// Removes everything the app added: its Steam shortcuts (except, on Linux, the one holding the
+/// Battle.net prefix), their Proton settings, the menu entry, its settings and the installed
+/// copy. Steam must be closed. Battle.net, the games and their prefix are left alone.
+pub fn uninstall(
+    steam: &SteamInstall,
+    shortcuts_path: &Path,
+    env: Option<&BnetEnv>,
+) -> Result<Vec<String>> {
+    if SteamInstall::is_running() {
+        bail!("Steam is running. Close it first, or it will overwrite the changes when it exits.");
+    }
+    let mut report = Vec::new();
+    let mut shortcuts = Shortcuts::load(shortcuts_path)?;
+    let owner = prefix_owner(env);
+    let mut compat_changes = Vec::new();
+    for s in shortcuts
+        .entries()
+        .into_iter()
+        .filter(ShortcutInfo::is_ours)
+    {
+        if Some(s.appid) == owner {
+            report.push(format!(
+                "Kept \"{}\": it holds the Proton prefix Battle.net and your games are installed in",
+                s.name
+            ));
+        } else if shortcuts.remove_ours(s.appid) {
+            compat_changes.push((s.appid, None));
+            report.push(format!("Removed {}", s.name));
+        }
+    }
+    shortcuts.save(shortcuts_path)?;
+    if !cfg!(windows) {
+        steam::set_compat_tools(&steam.config_vdf(), &compat_changes)?;
+    }
+
+    for f in menu_entry_files() {
+        let _ = std::fs::remove_file(f);
+    }
+    if let Some(dir) = crate::config::dir() {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    report.push("Removed the menu entry and the app's settings".into());
+
+    let dir = installed_exe_path()?
+        .parent()
+        .expect("has a parent")
+        .to_path_buf();
+    if dir.exists() {
+        let running_from_it = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.canonicalize().ok())
+            .zip(dir.canonicalize().ok())
+            .is_some_and(|(exe, dir)| exe.starts_with(dir));
+        if running_from_it && cfg!(windows) {
+            remove_after_exit(&dir)?;
+            report.push(format!(
+                "{} will be deleted when you close this window",
+                dir.display()
+            ));
+        } else {
+            std::fs::remove_dir_all(&dir).with_context(|| format!("deleting {}", dir.display()))?;
+            report.push(format!("Deleted {}", dir.display()));
+        }
+    }
+    report.push("Uninstalled. Battle.net and your games are untouched.".into());
+    Ok(report)
+}
+
+/// Windows can't delete a running program, so a hidden PowerShell waits for this process to
+/// exit and then deletes the folder.
+#[cfg(windows)]
+fn remove_after_exit(dir: &Path) -> Result<()> {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let script = format!(
+        "Wait-Process -Id {}; Start-Sleep -Seconds 1; Remove-Item -LiteralPath '{}' -Recurse -Force",
+        std::process::id(),
+        dir.display().to_string().replace('\'', "''")
+    );
+    std::process::Command::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-WindowStyle",
+            "Hidden",
+            "-Command",
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .context("scheduling the folder's deletion")?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn remove_after_exit(dir: &Path) -> Result<()> {
+    std::fs::remove_dir_all(dir).with_context(|| format!("deleting {}", dir.display()))
 }
 
 /// Whether Battle.net is running (it rewrites its settings file when it exits).
@@ -477,23 +658,84 @@ pub fn in_game_mode() -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn launch_options() {
-        let row = GameRow {
-            name: "WoW Forever".into(),
+    fn wowf() -> GameRow {
+        GameRow {
+            name: "World of Warcraft: Forever".into(),
             code: "WoWF".into(),
             processes: vec!["Wow".into(), "WowB".into()],
             game_dirs: vec!["O:/Blizzard/World of Warcraft".into()],
             icon: None,
             installed: true,
             status: "verified".into(),
-        };
+            old_names: vec!["WoW Forever".into()],
+            settings: GameSettings::default(),
+        }
+    }
+
+    #[test]
+    fn launch_options() {
+        let mut row = wowf();
         let q = if cfg!(windows) { "\"" } else { "'" };
+        let base = format!(
+            "run --code WoWF --process Wow --process WowB --game-dir {q}O:/Blizzard/World of Warcraft{q}"
+        );
+        assert_eq!(run_args(&row), base);
+        row.settings.startup_wait = Some(300);
+        row.settings.relaunch_grace = Some(0);
         assert_eq!(
             run_args(&row),
-            format!(
-                "run --code WoWF --process Wow --process WowB --game-dir {q}O:/Blizzard/World of Warcraft{q}"
-            )
+            format!("{base} --startup-wait 300 --relaunch-grace 0")
+        );
+    }
+
+    #[test]
+    fn outdated_shortcuts() {
+        let row = wowf();
+        let launcher = installed_exe_path().unwrap();
+        let current = build_shortcut(&row, &launcher, None).unwrap();
+        let existing = |name: &str, launch_options: &str| ShortcutInfo {
+            appid: 1,
+            name: name.into(),
+            exe: current.exe.clone(),
+            launch_options: launch_options.into(),
+        };
+        if cfg!(windows) {
+            // Only Windows can build a shortcut without a Battle.net prefix.
+            assert_eq!(
+                outdated(&row, &existing(&row.name, &current.launch_options), None),
+                None
+            );
+            assert_eq!(
+                outdated(
+                    &row,
+                    &existing(&row.name, "run --code WoWF --process Wow"),
+                    None
+                ),
+                Some("settings")
+            );
+            let mut changed = row.clone();
+            changed.settings.startup_wait = Some(300);
+            assert_eq!(
+                outdated(
+                    &changed,
+                    &existing(&row.name, &current.launch_options),
+                    None
+                ),
+                Some("settings")
+            );
+        }
+        assert_eq!(
+            outdated(
+                &row,
+                &existing("WoW Forever", &current.launch_options),
+                None
+            ),
+            Some("rename")
+        );
+        // A name the user picked isn't an old default, so it's kept.
+        assert_ne!(
+            outdated(&row, &existing("My WoW", &current.launch_options), None),
+            Some("rename")
         );
     }
 }

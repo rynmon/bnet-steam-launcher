@@ -1,7 +1,7 @@
 [
-  { "name": "World of Warcraft: Forever", "code": "WoWF", "products": ["wowf", "wowf_beta", "wowfb"], "processes": ["Wow", "WowB"], "status": "verified" },
+  { "name": "World of Warcraft: Forever", "old_names": ["WoW Forever"], "code": "WoWF", "products": ["wowf", "wowf_beta", "wowfb"], "processes": ["Wow", "WowB"], "status": "verified" },
   { "name": "World of Warcraft", "code": "WoW", "products": ["wow"], "processes": ["Wow"], "status": "multiple" },
-  { "name": "World of Warcraft Classic", "code": "WoWC", "products": ["wow_classic", "wow_classic_era", "wowc"], "processes": ["WowClassic"], "status": "multiple" },
+  { "name": "World of Warcraft Classic", "old_names": ["WoW Classic"], "code": "WoWC", "products": ["wow_classic", "wow_classic_era", "wowc"], "processes": ["WowClassic"], "status": "multiple" },
   { "name": "Diablo", "code": "D1", "products": ["d1", "drtl"], "processes": [], "status": "single" },
   { "name": "Diablo II: Resurrected", "code": "OSI", "products": ["osi"], "processes": ["D2R"], "status": "single" },
   { "name": "Diablo III", "code": "D3", "products": ["diablo3", "d3"], "processes": ["Diablo III64", "Diablo III"], "status": "multiple" },

@@ -267,6 +267,9 @@ pub struct NewShortcut {
     pub start_dir: String,
     pub icon: String,
     pub launch_options: String,
+    /// Default names earlier versions gave this game; an existing shortcut still called one of
+    /// these is renamed to `name` (a name the user chose is left alone).
+    pub old_names: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -376,6 +379,9 @@ impl Shortcuts {
             _ => None,
         });
         if let Some(m) = existing {
+            if s.old_names.contains(&info(m).name) {
+                m.set("AppName", str_val(&s.name));
+            }
             m.set("Exe", str_val(&s.exe));
             m.set("StartDir", str_val(&s.start_dir));
             // Keep an icon the user (or Steam) already set; only fill in a missing one.
@@ -572,6 +578,7 @@ mod tests {
             start_dir: "\"C:\\\"".into(),
             icon: String::new(),
             launch_options: "run --code WoWF --process Wow".into(),
+            old_names: vec!["WoW Forever (old)".into()],
         }
     }
 
@@ -644,6 +651,32 @@ mod tests {
         assert_eq!(again.entries(), entries);
         assert!(s.remove_ours(id));
         assert!(s.entries().is_empty());
+    }
+
+    #[test]
+    fn renames_only_old_default_names() {
+        let mut s = Shortcuts {
+            root: Map::default(),
+        };
+        s.root.set("shortcuts", Value::Map(Map::default()));
+        let id = s.upsert(&sample()); // named "WoW Forever"
+
+        // A new full name, but "WoW Forever" isn't listed as an old default: keep the name.
+        let mut full = sample();
+        full.name = "World of Warcraft: Forever".into();
+        full.old_names = Vec::new();
+        assert_eq!(
+            s.upsert(&full),
+            id,
+            "matched by launch code, updated in place"
+        );
+        assert_eq!(s.entries()[0].name, "WoW Forever");
+
+        // Listed as an old default: renamed, same shortcut.
+        full.old_names = vec!["WoW Forever".into()];
+        assert_eq!(s.upsert(&full), id);
+        assert_eq!(s.entries().len(), 1);
+        assert_eq!(s.entries()[0].name, "World of Warcraft: Forever");
     }
 
     #[test]

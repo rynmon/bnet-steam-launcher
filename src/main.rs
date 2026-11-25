@@ -12,6 +12,7 @@ mod run;
 mod setup;
 mod steam;
 mod time;
+mod update;
 mod vdf_bin;
 mod vdf_text;
 #[cfg(windows)]
@@ -46,6 +47,19 @@ enum Command {
     Remove(EditArgs),
     /// Download Battle.net's installer and run it (SteamOS: through a new Proton shortcut).
     InstallBnet(AccountArgs),
+    /// Rewrite every shortcut this app made with the current version and settings.
+    Update(SteamArgs),
+    /// Remove this app's shortcuts, menu entry, settings and installed copy.
+    Uninstall(SteamArgs),
+}
+
+#[derive(clap::Args)]
+struct SteamArgs {
+    #[command(flatten)]
+    account: AccountArgs,
+    /// Close Steam first if it's running, and start it again afterwards.
+    #[arg(long)]
+    restart_steam: bool,
 }
 
 #[derive(clap::Args)]
@@ -81,7 +95,14 @@ fn main() {
     #[cfg(windows)]
     if matches!(
         cli.command,
-        Some(Command::List(_) | Command::Add(_) | Command::Remove(_) | Command::InstallBnet(_))
+        Some(
+            Command::List(_)
+                | Command::Add(_)
+                | Command::Remove(_)
+                | Command::InstallBnet(_)
+                | Command::Update(_)
+                | Command::Uninstall(_)
+        )
     ) {
         winmsg::attach_parent_console();
     }
@@ -92,6 +113,8 @@ fn main() {
         Some(Command::Add(args)) => report(edit(&args, true)),
         Some(Command::Remove(args)) => report(edit(&args, false)),
         Some(Command::InstallBnet(args)) => report(install_bnet(&args)),
+        Some(Command::Update(args)) => report(update_all(&args)),
+        Some(Command::Uninstall(args)) => report(uninstall(&args)),
     };
     std::process::exit(code);
 }
@@ -145,7 +168,7 @@ fn list(args: &AccountArgs) -> Result<()> {
         println!("Battle.net: {}", e.bnet_exe.display());
     }
     println!("Games:");
-    for row in setup::game_rows(envs.first()) {
+    for row in setup::game_rows(envs.first(), &config::Config::load()) {
         if row.installed {
             println!(
                 "  {:<8} {} (installed: {})",
@@ -178,7 +201,7 @@ fn list(args: &AccountArgs) -> Result<()> {
 fn edit(args: &EditArgs, add: bool) -> Result<()> {
     let steam = steam::SteamInstall::find().context("Steam wasn't found")?;
     let envs = bnet::find_bnet();
-    let rows = setup::game_rows(envs.first());
+    let rows = setup::game_rows(envs.first(), &config::Config::load());
     let mut picked = Vec::new();
     for g in &args.games {
         let row = rows
@@ -194,12 +217,12 @@ fn edit(args: &EditArgs, add: bool) -> Result<()> {
     let changes = if add {
         setup::Changes {
             add: picked,
-            remove: Vec::new(),
+            ..Default::default()
         }
     } else {
         setup::Changes {
-            add: Vec::new(),
             remove: picked,
+            ..Default::default()
         }
     };
 
@@ -289,5 +312,82 @@ fn install_bnet(args: &AccountArgs) -> Result<()> {
     println!(
         "Battle.net's installer will open through Steam. Install Battle.net, sign in and install your games, then run this app again to add them."
     );
+    Ok(())
+}
+
+/// Runs `work` with Steam closed: closes and restarts it if `restart` (and it's running), else
+/// refuses while it's running.
+fn with_steam_closed<T>(
+    steam: &steam::SteamInstall,
+    restart: bool,
+    work: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let running = steam::SteamInstall::is_running();
+    if running && !restart {
+        bail!("Steam is running. Close it first, or pass --restart-steam.");
+    }
+    if running {
+        if setup::in_game_mode() {
+            bail!("Switch to Desktop Mode first: Steam can't be restarted in Game Mode.");
+        }
+        println!("Closing Steam...");
+        steam.shutdown()?;
+    }
+    let result = work();
+    if running {
+        println!("Starting Steam...");
+        steam.start()?;
+    }
+    result
+}
+
+fn update_all(args: &SteamArgs) -> Result<()> {
+    let steam = steam::SteamInstall::find().context("Steam wasn't found")?;
+    let account = pick_account(&steam, args.account.account)?;
+    let envs = bnet::find_bnet();
+    let rows = setup::game_rows(envs.first(), &config::Config::load());
+    let shortcuts = steam::Shortcuts::load(&account.shortcuts_path())?.entries();
+    let update: Vec<&setup::GameRow> = rows
+        .iter()
+        .filter(|r| {
+            setup::shortcuts_for(r, &shortcuts)
+                .iter()
+                .any(|s| s.is_ours())
+        })
+        .collect();
+    if update.is_empty() {
+        println!("No shortcuts made by this app in account {}.", account.id);
+        return Ok(());
+    }
+    let changes = setup::Changes {
+        update,
+        ..Default::default()
+    };
+    let applied = with_steam_closed(&steam, args.restart_steam, || {
+        setup::apply(
+            &steam,
+            &account.shortcuts_path(),
+            envs.first(),
+            &changes,
+            None,
+            true,
+        )
+    })?;
+    for line in applied.lines {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+fn uninstall(args: &SteamArgs) -> Result<()> {
+    let steam = steam::SteamInstall::find().context("Steam wasn't found")?;
+    let account = pick_account(&steam, args.account.account)?;
+    let envs = bnet::find_bnet();
+    let lines = with_steam_closed(&steam, args.restart_steam, || {
+        setup::uninstall(&steam, &account.shortcuts_path(), envs.first())
+    })?;
+    for line in lines {
+        println!("{line}");
+    }
     Ok(())
 }

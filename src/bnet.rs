@@ -9,6 +9,9 @@ use serde::Deserialize;
 #[derive(Clone, Debug, Deserialize)]
 pub struct CatalogGame {
     pub name: String,
+    /// Names earlier versions of the app gave this game's shortcut; updating renames those.
+    #[serde(default)]
+    pub old_names: Vec<String>,
     /// Code for Battle.net's `--exec="launch <code>"`.
     pub code: String,
     /// Battle.net product IDs (uid or product code in product.db) that mean this game is installed.
