@@ -9,7 +9,7 @@
 [![App](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/app.yml/badge.svg)](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/app.yml)
 [![Lint](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml/badge.svg)](https://github.com/rynmon/bnet-steam-launcher/actions/workflows/lint.yml)
 
-Launch a Battle.net game (built and tested with **WoW Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
+Launch a Battle.net game (built and tested with **World of Warcraft: Forever**) from Steam with working **in-game status**, **overlay**, and **Steam Input**. Status clears automatically when you exit the game.
 
 Works on **Windows** and **SteamOS** — Steam Deck and Steam Machine (through Proton).
 
@@ -25,7 +25,7 @@ It comes as one app, `bnet-launcher`, that both sets up your Steam shortcuts and
 
 - Steam, signed in at least once.
 - Battle.net — the app can install it for you (on SteamOS, the Windows version under Proton; there's no native Linux client).
-- Tested with WoW Forever on Windows. Other games use the same mechanism and should work — see [Launch codes](#launch-codes) below.
+- Tested with World of Warcraft: Forever on Windows and SteamOS (Steam Deck). Other games use the same mechanism and should work — see [Launch codes](#launch-codes) below.
 
 ---
 
@@ -69,8 +69,7 @@ The same things work from a terminal: `bnet-launcher list`, `bnet-launcher add W
 ### Known limits
 
 - **WoW Retail and WoW Forever share an install folder.** If Retail is already running when you press Play on WoW Forever (or the other way round), the app treats the running one as the game and tracks it instead of starting the other.
-- **Games other than WoW Forever are untested.** Their launch codes come from community sources, and process names for some of them are best guesses — the install-folder check usually covers a wrong name.
-- **SteamOS support has not yet been tested on a device.** The launching logic is carried over from the tested `start-bnet-game.sh`, but the app's setup steps (shared Proton prefix, Proton version, installer shortcut) are new.
+- **Games other than World of Warcraft: Forever are untested.** Their launch codes come from community sources, and process names for some of them are best guesses — the install-folder check usually covers a wrong name.
 
 ### What the shortcut runs
 
@@ -189,7 +188,7 @@ Log/lock: `$XDG_RUNTIME_DIR/start-bnet-game.log` / `.lock` (usually `/run/user/1
 
 ## Launch codes
 
-Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work. Only **WoW Forever** (`WoWF`) has actually been tested with this script; everything else comes from the community sources below.
+Pass the code to `-LaunchCode` / `BNET_LAUNCH_CODE` (just the code, e.g. `Fen`, not the whole `--exec` string). Community-collected, not published by Blizzard — treat as a starting point and check the log if one doesn't work. Only **World of Warcraft: Forever** (`WoWF`) has actually been tested; everything else comes from the community sources below.
 
 Last checked: 2026-10-27.
 
@@ -197,14 +196,14 @@ Last checked: 2026-10-27.
 
 | Game | Code | Notes |
 |---|---|---|
-| WoW Forever | `WoWF` | Tested with this script (release and beta, last on 2026-10-27). Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
+| World of Warcraft: Forever | `WoWF` | Tested with the app on Windows and SteamOS (2026-11-25), and with the scripts (release and beta, 2026-10-27). Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
 | World of Warcraft | `WoW` | |
-| WoW Classic (all versions) | `WoWC` | Version is whatever's selected in Battle.net's dropdown. |
+| World of Warcraft Classic | `WoWC` | All versions: the one launched is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Includes Hellfire. |
 | Diablo II: Resurrected | `OSI` | |
 | Diablo III | `D3` | |
 | Diablo IV | `Fen` | |
-| Diablo Immortal (PC) | `ANBS` | |
+| Diablo Immortal | `ANBS` | The PC version. |
 | Hearthstone | `WTCG` | |
 | Heroes of the Storm | `Hero` | |
 | Overwatch | `Pro` | Formerly listed as Overwatch 2. |
@@ -222,7 +221,7 @@ Last checked: 2026-10-27.
 
 | Game | Code | Notes |
 |---|---|---|
-| Call of Duty / Warzone / Black Ops 7 | `AUKS` | Titles switched inside the launcher. |
+| Call of Duty | `AUKS` | Includes Warzone and Black Ops 7; titles are switched inside the game's own launcher. |
 | Call of Duty: Black Ops 4 | `VIPR` | |
 | Call of Duty: Black Ops 6 | `BTLR` | Standalone entry since a July 2026 update. |
 | Call of Duty: Black Ops Cold War | `ZEUS` | |

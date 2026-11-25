@@ -12,14 +12,14 @@ Last checked: 2026-10-27.
 
 | Game | Code | Status | Notes |
 |---|---|---|---|
-| WoW Forever | `WoWF` | Verified | Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
+| World of Warcraft: Forever | `WoWF` | Verified | Tested with the app on Windows and SteamOS. Launches whichever WoW Forever version is selected in Battle.net's version dropdown: the release (process `Wow`) or the beta (process `WowB`). Match `-GameProcess` / `BNET_GAME_PROCESS` to the one you play. On 2026-10-21 this briefly only selected the game without starting it; if that happens again, press Play yourself and add `-StartupWait 300 -RetryAfter 300` (SteamOS: `BNET_STARTUP_WAIT=300 BNET_RETRY_AFTER=300`). |
 | World of Warcraft | `WoW` | Multiple sources | |
-| WoW Classic (all versions) | `WoWC` | Multiple sources | Version is whatever's selected in Battle.net's dropdown. |
+| World of Warcraft Classic | `WoWC` | Multiple sources | All versions: the one launched is whatever's selected in Battle.net's dropdown. |
 | Diablo | `D1` | Single source | Includes Hellfire. |
 | Diablo II: Resurrected | `OSI` | Single source | |
 | Diablo III | `D3` | Multiple sources | |
 | Diablo IV | `Fen` | Multiple sources | |
-| Diablo Immortal (PC) | `ANBS` | Single source | |
+| Diablo Immortal | `ANBS` | Single source | The PC version. |
 | Hearthstone | `WTCG` | Multiple sources | |
 | Heroes of the Storm | `Hero` | Multiple sources | |
 | Overwatch | `Pro` | Multiple sources | Formerly listed as Overwatch 2. |
@@ -37,7 +37,7 @@ Last checked: 2026-10-27.
 
 | Game | Code | Status | Notes |
 |---|---|---|---|
-| Call of Duty / Warzone / Black Ops 7 | `AUKS` | Single source | Titles switched inside the launcher. |
+| Call of Duty | `AUKS` | Single source | Includes Warzone and Black Ops 7; titles are switched inside the game's own launcher. |
 | Call of Duty: Black Ops 4 | `VIPR` | Multiple sources | |
 | Call of Duty: Black Ops 6 | `BTLR` | Single source | Standalone entry since a July 2026 update. |
 | Call of Duty: Black Ops Cold War | `ZEUS` | Multiple sources | |
@@ -61,7 +61,7 @@ Last checked: 2026-10-27.
 
 ### Caveats
 
-- Only WoW Forever has been tested with this script; every other code is from the sources below.
+- Only World of Warcraft: Forever has been tested; every other code is from the sources below.
 - A code may open the game's page instead of starting it — the script will time out and exit with code `2`.
 - Not every game supports the Steam overlay (some Call of Duty titles have reported issues) or is confirmed to run under Proton (check ProtonDB).
 

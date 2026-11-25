@@ -87,7 +87,63 @@ pub fn installed_exe_path() -> Result<PathBuf> {
 }
 
 /// Copies this executable to `installed_exe_path()` (unless that's what's running) and returns it.
+/// On Linux it also updates the app's menu entry to point at that copy.
 pub fn install_self() -> Result<PathBuf> {
+    let target = copy_self()?;
+    // Only cosmetic (icon and menu entry), so a failure here mustn't stop the save.
+    let _ = install_desktop_entry(&target);
+    Ok(target)
+}
+
+/// Linux: installs the app icon and a `.desktop` entry in the user's own folders. Linux programs
+/// can't carry an icon inside the executable like a Windows .exe; desktops find it through a
+/// `.desktop` file whose name matches the window's app ID (set in gui.rs). This also puts
+/// "Battle.net games for Steam" in the application menu. Does nothing on Windows.
+pub fn install_desktop_entry(exe: &Path) -> Result<()> {
+    if cfg!(windows) {
+        return Ok(());
+    }
+    let data = dirs::data_dir().context("no user data folder")?;
+    let icon_dir = data.join("icons/hicolor/256x256/apps");
+    std::fs::create_dir_all(&icon_dir)?;
+    let icon = icon_dir.join(format!("{}.png", crate::EXE_STEM));
+    let png: &[u8] = include_bytes!("../assets/icon.png");
+    if std::fs::read(&icon).ok().as_deref() != Some(png) {
+        steam::write_atomic(&icon, png)?;
+    }
+
+    let apps = data.join("applications");
+    std::fs::create_dir_all(&apps)?;
+    // Exec quoting per the Desktop Entry spec: double quotes, with \ " ` $ escaped.
+    let exec: String = exe
+        .display()
+        .to_string()
+        .chars()
+        .flat_map(|c| match c {
+            '\\' | '"' | '`' | '$' => vec!['\\', c],
+            c => vec![c],
+        })
+        .collect();
+    let entry = format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Battle.net games for Steam\n\
+         Comment=Add Battle.net games to Steam with in-game status, overlay and Steam Input\n\
+         Exec=\"{exec}\"\n\
+         Icon={stem}\n\
+         Terminal=false\n\
+         Categories=Game;Utility;\n\
+         StartupWMClass={stem}\n",
+        stem = crate::EXE_STEM
+    );
+    let path = apps.join(format!("{}.desktop", crate::EXE_STEM));
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(entry.as_str()) {
+        steam::write_atomic(&path, entry.as_bytes())?;
+    }
+    Ok(())
+}
+
+fn copy_self() -> Result<PathBuf> {
     let target = installed_exe_path()?;
     let current = std::env::current_exe()?;
     if same_file(&current, &target) {

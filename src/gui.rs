@@ -11,9 +11,21 @@ use crate::setup::{self, GameRow};
 use crate::steam::{Account, ShortcutInfo, Shortcuts, SteamInstall};
 
 pub fn run() -> anyhow::Result<()> {
+    // Linux: the window icon comes from a .desktop entry matching the app ID below, not from the
+    // executable. Point it at the installed copy if there is one, else at this file.
+    if !cfg!(windows) {
+        let exe = setup::installed_exe_path()
+            .ok()
+            .filter(|p| p.is_file())
+            .or_else(|| std::env::current_exe().ok());
+        if let Some(exe) = exe {
+            let _ = setup::install_desktop_entry(&exe);
+        }
+    }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Battle.net games for Steam")
+            .with_app_id(crate::EXE_STEM)
             .with_inner_size([660.0, 640.0])
             .with_min_inner_size([480.0, 380.0])
             .with_icon(std::sync::Arc::new(

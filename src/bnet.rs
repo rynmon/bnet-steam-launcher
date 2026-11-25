@@ -446,7 +446,7 @@ mod tests {
         let doc = include_str!("../LAUNCH_CODES.md");
         for game in catalog() {
             assert!(
-                doc.contains(&format!("`{}`", game.code)),
+                doc.contains(&format!("| {} | `{}` |", game.name, game.code)),
                 "{} ({}) missing from LAUNCH_CODES.md",
                 game.name,
                 game.code
