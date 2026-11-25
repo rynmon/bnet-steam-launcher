@@ -11,16 +11,15 @@ use crate::setup::{self, GameRow};
 use crate::steam::{Account, ShortcutInfo, Shortcuts, SteamInstall};
 
 pub fn run() -> anyhow::Result<()> {
-    // Linux: the window icon comes from a .desktop entry matching the app ID below, not from the
-    // executable. Point it at the installed copy if there is one, else at this file.
-    if !cfg!(windows) {
-        let exe = setup::installed_exe_path()
-            .ok()
-            .filter(|p| p.is_file())
-            .or_else(|| std::env::current_exe().ok());
-        if let Some(exe) = exe {
-            let _ = setup::install_desktop_entry(&exe);
-        }
+    // Add the app to the Start menu (Windows) or application menu (Linux, where this .desktop
+    // entry is also how the window gets its icon). It points at the installed copy if there is
+    // one, else at this file; saving shortcuts installs the copy and repoints it.
+    let exe = setup::installed_exe_path()
+        .ok()
+        .filter(|p| p.is_file())
+        .or_else(|| std::env::current_exe().ok());
+    if let Some(exe) = exe {
+        let _ = setup::install_menu_entry(&exe);
     }
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

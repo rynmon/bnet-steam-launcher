@@ -39,7 +39,7 @@ It comes as one app, `bnet-launcher`, that both sets up your Steam shortcuts and
 4. Tick the games you want in Steam and press **Save to Steam**. Steam has to be closed while its shortcuts change; the app offers to close it and starts it again afterwards.
 5. Set a controller layout in each new shortcut's Properties if you use one.
 
-Installed a game later? Open the app again (or press **Refresh**) and tick it.
+Installed a game later? Open the app again (or press **Refresh**) and tick it. Once you've opened it, it's in the **Start menu** (Windows) or the **application menu** (SteamOS Desktop Mode) as **Battle.net games for Steam**, so you can search for it there instead of keeping the download.
 
 **Options** (in the window):
 
@@ -64,7 +64,10 @@ The same things work from a terminal: `bnet-launcher list`, `bnet-launcher add W
 ### Updating and uninstalling
 
 - **Update:** download the new version, open it, and press **Save to Steam** (tick or untick anything to enable it, or add a game). It replaces the installed copy that the shortcuts use.
-- **Uninstall:** untick every game and save, then delete `%LOCALAPPDATA%\bnet-launcher` (Windows) or `~/.local/share/bnet-launcher` (SteamOS), and the settings folder above if you saved an API key.
+- **Uninstall:** untick every game and save, then delete:
+  - **Windows:** `%LOCALAPPDATA%\bnet-launcher`, and the Start menu shortcut `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Battle.net games for Steam.lnk`.
+  - **SteamOS:** `~/.local/share/bnet-launcher`, `~/.local/share/applications/bnet-launcher.desktop` and `~/.local/share/icons/hicolor/256x256/apps/bnet-launcher.png`.
+  - Either: the settings folder above, if you saved an API key.
 
 ### Known limits
 

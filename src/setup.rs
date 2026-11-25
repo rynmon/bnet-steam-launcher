@@ -87,22 +87,43 @@ pub fn installed_exe_path() -> Result<PathBuf> {
 }
 
 /// Copies this executable to `installed_exe_path()` (unless that's what's running) and returns it.
-/// On Linux it also updates the app's menu entry to point at that copy.
+/// It also points the app's Start menu / application menu entry at that copy.
 pub fn install_self() -> Result<PathBuf> {
     let target = copy_self()?;
-    // Only cosmetic (icon and menu entry), so a failure here mustn't stop the save.
-    let _ = install_desktop_entry(&target);
+    // Only a convenience, so a failure here mustn't stop the save.
+    let _ = install_menu_entry(&target);
     Ok(target)
+}
+
+/// The name the app is listed under in the Start menu / application menu.
+const MENU_NAME: &str = "Battle.net games for Steam";
+
+/// Windows: a Start menu shortcut, so searching the Start menu finds the app. It goes in the
+/// user's own Start menu folder, so no admin rights are needed.
+#[cfg(windows)]
+pub fn install_menu_entry(exe: &Path) -> Result<()> {
+    let programs = dirs::data_dir()
+        .context("no user data folder")?
+        .join(r"Microsoft\Windows\Start Menu\Programs");
+    std::fs::create_dir_all(&programs)?;
+    let mut link = mslnk::ShellLink::new(exe)?;
+    link.set_name(Some(
+        "Add Battle.net games to Steam with in-game status, overlay and Steam Input".into(),
+    ));
+    if let Some(dir) = exe.parent() {
+        link.set_working_dir(Some(dir.display().to_string()));
+    }
+    link.set_icon_location(Some(exe.display().to_string()));
+    link.create_lnk(programs.join(format!("{MENU_NAME}.lnk")))?;
+    Ok(())
 }
 
 /// Linux: installs the app icon and a `.desktop` entry in the user's own folders. Linux programs
 /// can't carry an icon inside the executable like a Windows .exe; desktops find it through a
-/// `.desktop` file whose name matches the window's app ID (set in gui.rs). This also puts
-/// "Battle.net games for Steam" in the application menu. Does nothing on Windows.
-pub fn install_desktop_entry(exe: &Path) -> Result<()> {
-    if cfg!(windows) {
-        return Ok(());
-    }
+/// `.desktop` file whose name matches the window's app ID (set in gui.rs). This also puts the app
+/// in the application menu.
+#[cfg(not(windows))]
+pub fn install_menu_entry(exe: &Path) -> Result<()> {
     let data = dirs::data_dir().context("no user data folder")?;
     let icon_dir = data.join("icons/hicolor/256x256/apps");
     std::fs::create_dir_all(&icon_dir)?;
@@ -127,7 +148,7 @@ pub fn install_desktop_entry(exe: &Path) -> Result<()> {
     let entry = format!(
         "[Desktop Entry]\n\
          Type=Application\n\
-         Name=Battle.net games for Steam\n\
+         Name={MENU_NAME}\n\
          Comment=Add Battle.net games to Steam with in-game status, overlay and Steam Input\n\
          Exec=\"{exec}\"\n\
          Icon={stem}\n\
