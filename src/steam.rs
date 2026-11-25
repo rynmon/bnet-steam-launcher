@@ -464,11 +464,17 @@ fn renumber(list: &mut Map) {
 }
 
 fn backup(path: &Path) -> Result<()> {
-    let stamp = std::time::SystemTime::now()
+    let mut stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
         .as_millis();
     let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let backup = path.with_file_name(format!("{name}.{}-{stamp}.bak", crate::EXE_STEM));
+    let named = |stamp| path.with_file_name(format!("{name}.{}-{stamp}.bak", crate::EXE_STEM));
+    // Two saves within the same millisecond mustn't share a backup (the second would replace the
+    // first), so step past any name that's taken.
+    while named(stamp).exists() {
+        stamp += 1;
+    }
+    let backup = named(stamp);
     std::fs::copy(path, &backup).with_context(|| format!("backing up {}", path.display()))?;
     // Keep the five most recent backups.
     if let Some(dir) = path.parent() {
